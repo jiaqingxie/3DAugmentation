@@ -130,7 +130,7 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
                 xyz_coordinates, atom_types=readxyz(xyzpathdict[i])
                 data.xyz=torch.Tensor(xyz_coordinates)
             else:
-                data.xyz=None
+                data.xyz=torch.Tensor([float('nan')])
             data_list.append(data)
 
         # double-check prediction target
