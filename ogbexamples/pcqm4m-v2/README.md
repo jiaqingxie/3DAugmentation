@@ -19,7 +19,7 @@ torch>=1.7.0
 
 ### GIN [1]
 ```bash
-python main_gnn.py --gnn gin --log_dir $LOG_DIR --checkpoint_dir $CHECKPOINT_DIR --save_test_dir $TEST_DIR
+python main_gnn.py --gnn gin --log_dir tmplog/ --checkpoint_dir tmpcheck/ --save_test_dir temptestdir/
 ```
 
 ### GIN-virtual [1,3]
