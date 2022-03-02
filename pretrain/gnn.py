@@ -53,10 +53,10 @@ class GNN(torch.nn.Module):
             self.graph_pred_linear = torch.nn.Linear(2*self.emb_dim, self.num_tasks)
         else:
             self.graph_pred_linear = torch.nn.Linear(self.emb_dim, self.num_tasks)
-
+        self.coordinate_pred_linear=torch.nn.Linear(self.emb_dim,3)
     def forward(self, batched_data):
         h_node = self.gnn_node(batched_data)
-
+        coordinate_pred=self.coordinate_pred_linear(h_node)
         h_graph = self.pool(h_node, batched_data.batch)
         output = self.graph_pred_linear(h_graph)
 
