@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import torch
-from ogb.lsc import PygPCQM4Mv2Dataset
+from ogb.lsc import PygPCQM4Mv2Dataset,PCQM4Mv2Dataset
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
 
@@ -128,9 +128,13 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
             data.y = torch.Tensor([homolumogap])
             if i<=3378605:
                 xyz_coordinates, atom_types=readxyz(xyzpathdict[i])
+                try:
+                    assert len(xyz_coordinates)==int(graph['num_nodes'])
+                except:
+                    print(i)
                 data.xyz=torch.Tensor(xyz_coordinates)
             else:
-                data.xyz=torch.Tensor([float('nan')])
+                data.xyz=torch.Tensor([float('nan'),float('nan'),float('nan')]).expand(int(graph['num_nodes']),3)
             data_list.append(data)
 
         # double-check prediction target
@@ -155,8 +159,15 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
 
 
 if __name__=="__main__":
-    xyz_filepath="/remote-home/yxwang/Graph/dataset/pcqm4m-v2_xyz"
-    dataset=PygPCQM4Mv2Dataset_xyz(root="/remote-home/yxwang/Graph/dataset",smiles2graph=smiles2graph)
 
-    print(dataset[0].x)
-    print(dataset[0].xyz)
+    dataset=PygPCQM4Mv2Dataset_xyz(root="/remote-home/yxwang/Graph/dataset",smiles2graph=smiles2graph)
+    originaldataset=PCQM4Mv2Dataset(root="/remote-home/yxwang/Graph/dataset",only_smiles=True)
+    notoklist=[140686,1652244,1761811,1894228,3250062,3284202,3330645]
+    for i in notoklist:
+        smiles=originaldataset[i]
+        x=dataset[i].x
+        xyz=dataset[i].xyz
+        print(x,xyz)
+        import ipdb
+        ipdb.set_trace()
+

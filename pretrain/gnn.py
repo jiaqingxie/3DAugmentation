@@ -61,7 +61,7 @@ class GNN(torch.nn.Module):
         output = self.graph_pred_linear(h_graph)
 
         if self.training:
-            return output
+            return output,coordinate_pred
         else:
             # At inference time, we clamp the value between 0 and 20
             return torch.clamp(output, min=0, max=20)
