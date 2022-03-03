@@ -15,6 +15,8 @@ from ogb.lsc import PygPCQM4Mv2Dataset,PCQM4Mv2Dataset
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
 
+from rdkit import Chem
+
 def readxyz(xyzfile):
     atomic_symbols=[]
     xyz_coordinates=[]
@@ -44,11 +46,34 @@ def readxyzpath(xyz_filepath):
             xyzindex=name[:-4]
             xyz_datadict[int(xyzindex)]=xyzpath
 
-##########################
-
-
-    
+###############
     return xyz_datadict
+def normalizeline(line):
+    linelist=[x for x in line.split(" ") if x!='']
+    return linelist
+
+def extractxyzfromMolblock(molblock):
+    lines=[normalizeline(x) for x in molblock.split("\n")]
+    
+    lenline=[len(x) for x in lines]
+    maxlength=max(lenline)
+    xyzcoordinate=[]
+    atom_type=[]
+    for line in lines:
+        if len(line)==maxlength:
+            xyz=[float(x) for x in line[0:3]]
+            type=line[4]
+            xyzcoordinate.append(xyz)
+            atom_type.append(type)
+    return xyzcoordinate,atom_type
+
+
+def readsdf(index):
+    suppl = Chem.SDMolSupplier('/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sdf')
+    mol=suppl[index]
+    molblock=Chem.MolToMolBlock(mol)
+    return extractxyzfromMolblock(molblock)
+
 class xyzData(Data):
     def __init__(self,xyz=None,**kwargs):
         super(xyzData,self).__init__(**kwargs)
@@ -127,7 +152,12 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
             data.x = torch.from_numpy(graph['node_feat']).to(torch.int64)
             data.y = torch.Tensor([homolumogap])
             if i<=3378605:
-                xyz_coordinates, atom_types=readxyz(xyzpathdict[i])
+                notoklist=[140686,1652244,1761811,1894228,3250062,3284202,3330645]
+                if i in notoklist:
+                    xyz_coordinates, atom_types=readsdf(i)
+                else:
+
+                    xyz_coordinates, atom_types=readxyz(xyzpathdict[i])
                 try:
                     assert len(xyz_coordinates)==int(graph['num_nodes'])
                 except:
@@ -263,12 +293,24 @@ if __name__=="__main__":
 
     dataset=PygPCQM4Mv2Dataset_xyz(root="/remote-home/yxwang/Graph/dataset",smiles2graph=smiles2graph)
     originaldataset=PCQM4Mv2Dataset(root="/remote-home/yxwang/Graph/dataset",only_smiles=True)
-    notoklist=[140686,1652244,1761811,1894228,3250062,3284202,3330645]
-    for i in notoklist:
-        smiles=originaldataset[i]
-        x=dataset[i].x
-        xyz=dataset[i].xyz
-        print(x,xyz)
-        import ipdb
-        ipdb.set_trace()
+
+
+    # suppl = Chem.SDMolSupplier('/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sdf')
+
+    # notoklist=[140686,1652244,1761811,1894228,3250062,3284202,3330645]
+    # xyzpathdict=readxyzpath("/remote-home/yxwang/Graph/dataset/pcqm4m-v2_xyz")
+    # notokpathlist=[xyzpathdict[x] for x in notoklist]
+    # for i in notokpathlist:
+    #     os.system("cp {} ./ ".format(i))
+    # import ipdb
+    # ipdb.set_trace()
+    # for i in notoklist:
+    #     smiles=originaldataset[i]
+    #     x=dataset[i].x
+    #     xyz=dataset[i].xyz
+    #     # sdfblock=Chem.MolToMolBlock(suppl[i])
+    #     print(x,xyz)
+    #     # print(sdfblock)
+    #     import ipdb
+    #     ipdb.set_trace()
 
