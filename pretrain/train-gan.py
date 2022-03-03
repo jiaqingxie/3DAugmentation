@@ -15,21 +15,23 @@ import time
 import numpy as np
 import random
 
-
+from gan import Discriminatorfor3D
+import sys
+sys.path.append("../")
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
-from data.PCQM4Mv2_xyz import PygPCQM4Mv2Dataset_xyz
+from data.PCQM4Mv2_xyz import *
 
 reg_criterion = torch.nn.L1Loss()
 D_criterion=torch.nn.BCELoss()
-def train(model, device, loader, optimizer):
-    model.train()
+def train(netG, device, loader, optimizer):
+    netG.train()
     loss_accum = 0
 
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
 
-        pred = model(batch).view(-1,)
+        pred = netG(batch).view(-1,)
         optimizer.zero_grad()
         loss = reg_criterion(pred, batch.y)
         loss.backward()
@@ -41,8 +43,8 @@ def train(model, device, loader, optimizer):
 def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
     netG.train()
     netD.train()
-    G_loss=0
-    D_loss=0
+    G_losses = []
+    D_losses = []
     real_label=1
     fake_label=0
             ###########################
@@ -55,7 +57,9 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         # Format batch
         batch = batch.to(device)
         # Forward pass real batch through D
-        output = netD(batch).view(-1)
+        import ipdb
+        ipdb.set_trace()
+        output = netD(batch.xyz).view(-1)
         b_size = output.size(0)
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
         # Calculate loss on all-real batch
@@ -67,7 +71,7 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         ## Train with all-fake batch
         # Generate batch of latent vectors
         # Generate fake image batch with G
-        fake = netG(batch)
+        _,fake = netG(batch)
         # Classify all fake batch with D
         output = netD(fake.detach()).view(-1)
         # Calculate D's loss on the all-fake batch
@@ -75,6 +79,7 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         errD_fake = D_criterion(output, label)
         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
         errD_fake.backward()
+        D_G_z1 = output.mean().item()
         # Compute error of D as sum over the fake and the real batches
         errD = errD_real + errD_fake
         # Update D
@@ -91,12 +96,16 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         errG = D_criterion(output, label)
         # Calculate gradients for G
         errG.backward()
+        D_G_z2 = output.mean().item()
         # Update G
         optimizerG.step()
-        return errD,errG
+        G_losses.append(errG.item())
+        D_losses.append(errD.item())
+
+    return sum(D_losses)/(step+1),sum(G_losses)/(step+1)
         # Output training stats
-def eval(model, device, loader, evaluator):
-    model.eval()
+def eval(netG, device, loader, evaluator):
+    netG.eval()
     y_true = []
     y_pred = []
 
@@ -104,7 +113,7 @@ def eval(model, device, loader, evaluator):
         batch = batch.to(device)
 
         with torch.no_grad():
-            pred = model(batch).view(-1,)
+            pred = netG(batch).view(-1,)
 
         y_true.append(batch.y.view(pred.shape).detach().cpu())
         y_pred.append(pred.detach().cpu())
@@ -116,15 +125,15 @@ def eval(model, device, loader, evaluator):
 
     return evaluator.eval(input_dict)["mae"]
 
-def test(model, device, loader):
-    model.eval()
+def test(netG, device, loader):
+    netG.eval()
     y_pred = []
 
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
 
         with torch.no_grad():
-            pred = model(batch).view(-1,)
+            pred = netG(batch).view(-1,)
 
         y_pred.append(pred.detach().cpu())
 
@@ -186,8 +195,7 @@ def main():
         train_loader = DataLoader(dataset[split_idx["train"]], batch_size=args.batch_size, shuffle=True, num_workers = args.num_workers)
 
     valid_loader = DataLoader(dataset[split_idx["valid"]], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
-    import ipdb
-    ipdb.set_trace()
+
     if args.save_test_dir != '':
         testdev_loader = DataLoader(dataset[split_idx["test-dev"]], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
         testchallenge_loader = DataLoader(dataset[split_idx["test-challenge"]], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
@@ -203,68 +211,85 @@ def main():
     }
 
     if args.gnn == 'gin':
-        model = GNN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        netG = GNN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gin-virtual':
-        model = GNN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
+        netG = GNN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
     elif args.gnn == 'gcn':
-        model = GNN(gnn_type = 'gcn', virtual_node = False, **shared_params).to(device)
+        netG = GNN(gnn_type = 'gcn', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gcn-virtual':
-        model = GNN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
+        netG = GNN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
     else:
         raise ValueError('Invalid GNN type')
+    netD=Discriminatorfor3D().to(device)
 
-    num_params = sum(p.numel() for p in model.parameters())
+    num_params = sum(p.numel() for p in netG.parameters())
     print(f'#Params: {num_params}')
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
+    optimizerG = optim.Adam(netG.parameters(), lr=0.001)
+    optimizerD = optim.Adam(netD.parameters(), lr=0.001)
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
-    best_valid_mae = 1000
-
+    best_G_loss = 1000
+    best_D_loss = 1000
     if args.train_subset:
-        scheduler = StepLR(optimizer, step_size=300, gamma=0.25)
+        schedulerG = StepLR(optimizerG, step_size=300, gamma=0.25)
+        schedulerD = StepLR(optimizerD, step_size=300, gamma=0.25)
         args.epochs = 1000
     else:
-        scheduler = StepLR(optimizer, step_size=30, gamma=0.25)
+        schedulerG = StepLR(optimizerG, step_size=30, gamma=0.25)
+        schedulerD = StepLR(optimizerD, step_size=30, gamma=0.25)
+
+    best_epoch=1000
+    
 
     for epoch in range(1, args.epochs + 1):
         print("=====Epoch {}".format(epoch))
         print('Training...')
         
-        train_mae = train(model, device, train_loader, optimizer)
+        D_loss, G_loss = train_gan(netG,netD, device, train_loader, optimizerG,optimizerD)
 
-        print('Evaluating...')
-        valid_mae = eval(model, device, valid_loader, evaluator)
+        # print('Evaluating...')
+        # valid_mae = eval(netG, device, valid_loader, evaluator)
 
-        print({'Train': train_mae, 'Validation': valid_mae})
+        print({'D_loss': D_loss, 'G_loss': G_loss})
 
         if args.log_dir != '':
-            writer.add_scalar('valid/mae', valid_mae, epoch)
-            writer.add_scalar('train/mae', train_mae, epoch)
+            writer.add_scalar('D_loss', D_loss, epoch)
+            writer.add_scalar('G_loss', G_loss, epoch)
 
-        if valid_mae < best_valid_mae:
-            best_valid_mae = valid_mae
-            if args.checkpoint_dir != '':
-                print('Saving checkpoint...')
-                checkpoint = {'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), 'scheduler_state_dict': scheduler.state_dict(), 'best_val_mae': best_valid_mae, 'num_params': num_params}
-                torch.save(checkpoint, os.path.join(args.checkpoint_dir, 'checkpoint.pt'))
+        # if G_loss < best_G_loss:
+        #     best_G_loss = G_loss
+        #     if args.checkpoint_dir != '':
+        #         print('Saving checkpoint...')
+        #         checkpoint = {'epoch': epoch, 'netG_state_dict': netG.state_dict(), 'optimizerG_state_dict': optimizerG.state_dict(), 'scheduler_state_dict': scheduler.state_dict(), 'best_G_loss': best_G_loss, 'num_params': num_params}
+        #         torch.save(checkpoint, os.path.join(args.checkpoint_dir, 'checkpoint.pt'))
 
-            if args.save_test_dir != '':
-                testdev_pred = test(model, device, testdev_loader)
-                testdev_pred = testdev_pred.cpu().detach().numpy()
+        if G_loss < best_G_loss:
+            best_G_loss = G_loss
+        if D_loss < best_D_loss:
+            best_D_loss = D_loss
+        if args.checkpoint_dir != '':
+            print('Saving checkpoint...')
+            checkpoint = {'epoch': epoch, 'netG_state_dict': netG.state_dict(), 'optimizerG_state_dict': optimizerG.state_dict(), 'schedulerG_state_dict': schedulerG.state_dict(), 'best_G_loss': best_G_loss, 'num_params': num_params}
+            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
+            checkpoint = {'epoch': epoch, 'netD_state_dict': netD.state_dict(), 'optimizerD_state_dict': optimizerD.state_dict(), 'schedulerD_state_dict': schedulerD.state_dict(), 'best_D_loss': best_G_loss, 'num_params': num_params}
+            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
+            # if args.save_test_dir != '':
+            #     testdev_pred = test(netG, device, testdev_loader)
+            #     testdev_pred = testdev_pred.cpu().detach().numpy()
 
-                testchallenge_pred = test(model, device, testchallenge_loader)
-                testchallenge_pred = testchallenge_pred.cpu().detach().numpy()
+            #     testchallenge_pred = test(netG, device, testchallenge_loader)
+            #     testchallenge_pred = testchallenge_pred.cpu().detach().numpy()
 
-                print('Saving test submission file...')
-                evaluator.save_test_submission({'y_pred': testdev_pred}, args.save_test_dir, mode = 'test-dev')
-                evaluator.save_test_submission({'y_pred': testchallenge_pred}, args.save_test_dir, mode = 'test-challenge')
+            #     print('Saving test submission file...')
+            #     evaluator.save_test_submission({'y_pred': testdev_pred}, args.save_test_dir, mode = 'test-dev')
+            #     evaluator.save_test_submission({'y_pred': testchallenge_pred}, args.save_test_dir, mode = 'test-challenge')
 
-        scheduler.step()
+        schedulerG.step()
+        schedulerD.step()
             
-        print(f'Best validation MAE so far: {best_valid_mae}')
+        print(f'Best G_loss so far: {G_loss}, best epoch: {best_epoch}')
 
     if args.log_dir != '':
         writer.close()

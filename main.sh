@@ -1,0 +1,1 @@
+PYTHONPATH="$(pwd)":"$PYTHON_PATH" CUDA_VISIBLE_DEVICES=0 python pretrain/train-gan.py --gnn gin --log_dir checkpoint/test0/ --checkpoint_dir checkpoint/test0/ --save_test_dir checkpoint/test0/
