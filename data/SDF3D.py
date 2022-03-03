@@ -5,8 +5,17 @@ suppl = Chem.SDMolSupplier('/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sd
 mol=suppl[0]
 molblock=Chem.MolToMolBlock(mol)
 print(molblock)
-molblock
+def normalizelines(line):
+    linelist=[x for x in line.split(" ") if x!='']
+    return linelist
+
+def extractxyzfromMolblock(molblock):
+    lines=molblock.split("\n")
+
+
 for line_number,line in enumerate(molblock.split("\n")):
+    import ipdb
+    ipdb.set_trace()
     print(line)
     # import ipdb
     # ipdb.set_trace()
