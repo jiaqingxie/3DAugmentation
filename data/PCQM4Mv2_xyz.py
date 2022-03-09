@@ -16,6 +16,9 @@ from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
 
 from rdkit import Chem
+from itertools import permutations
+
+
 
 def readxyz(xyzfile):
     atomic_symbols=[]
@@ -78,6 +81,8 @@ class xyzData(Data):
     def __init__(self,xyz=None,**kwargs):
         super(xyzData,self).__init__(**kwargs)
         self.xyz=xyz
+        self.xyz_edge_index=None
+        self.xyz_edge_attr=None
     
 class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
     def __init__(self, root = 'dataset', smiles2graph = smiles2graph, transform=None, pre_transform = None):
@@ -163,8 +168,20 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
                 except:
                     print(i)
                 data.xyz=torch.Tensor(xyz_coordinates)
+
             else:
                 data.xyz=torch.Tensor([float('nan'),float('nan'),float('nan')]).expand(int(graph['num_nodes']),3)
+            
+            data.xyz_edge_index=torch.Tensor(list(permutations(range(int(graph['num_nodes'])),2))).T.long()
+
+            try:
+                data.xyz_edge_attr=torch.zeros([data.xyz_edge_index.shape[1],3]).long()
+            except:
+
+                data.xyz_edge_attr=data.edge_attr
+                data.xyz_edge_index=data.edge_index
+                print(i)
+
             data_list.append(data)
 
         # double-check prediction target

@@ -15,7 +15,7 @@ import time
 import numpy as np
 import random
 
-from gan import Discriminatorfor3D
+from gan import Discriminatorfor3D,GNN_Disciminator
 import sys
 sys.path.append("../")
 ### importing OGB-LSC
@@ -55,11 +55,12 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         ## Train with all-real batch
         netD.zero_grad()
         # Format batch
+        batch.xyz_edge_attr=batch.xyz_edge_attr.long()
+        batch.xyz_edge_index=batch.xyz_edge_index.long()
         batch = batch.to(device)
         # Forward pass real batch through D
-        import ipdb
-        ipdb.set_trace()
-        output = netD(batch.xyz).view(-1)
+        
+        output = netD(batch).view(-1)
         b_size = output.size(0)
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
         # Calculate loss on all-real batch
@@ -72,13 +73,14 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         # Generate batch of latent vectors
         # Generate fake image batch with G
         _,fake = netG(batch)
+        batch.xyz=fake
         # Classify all fake batch with D
-        output = netD(fake.detach()).view(-1)
+        output = netD(batch).view(-1)
         # Calculate D's loss on the all-fake batch
         label.fill_(fake_label)
         errD_fake = D_criterion(output, label)
         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
-        errD_fake.backward()
+        errD_fake.backward(retain_graph=True)
         D_G_z1 = output.mean().item()
         # Compute error of D as sum over the fake and the real batches
         errD = errD_real + errD_fake
@@ -91,7 +93,7 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         netG.zero_grad()
         label.fill_(real_label)  # fake labels are real for generator cost
         # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(fake).view(-1)
+        output = netD(batch).view(-1)
         # Calculate G's loss based on this output
         errG = D_criterion(output, label)
         # Calculate gradients for G
@@ -193,7 +195,8 @@ def main():
         train_loader = DataLoader(dataset[split_idx["train"][subset_idx]], batch_size=args.batch_size, shuffle=True, num_workers = args.num_workers)
     else:
         train_loader = DataLoader(dataset[split_idx["train"]], batch_size=args.batch_size, shuffle=True, num_workers = args.num_workers)
-
+    # import ipdb
+    # ipdb.set_trace()
     valid_loader = DataLoader(dataset[split_idx["valid"]], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
 
     if args.save_test_dir != '':
@@ -220,7 +223,7 @@ def main():
         netG = GNN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
     else:
         raise ValueError('Invalid GNN type')
-    netD=Discriminatorfor3D().to(device)
+    netD=GNN_Disciminator().to(device)
 
     num_params = sum(p.numel() for p in netG.parameters())
     print(f'#Params: {num_params}')
