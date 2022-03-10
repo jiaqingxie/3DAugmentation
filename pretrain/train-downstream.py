@@ -30,7 +30,7 @@ def train(model, device, loader, optimizer):
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
 
-        pred = model(batch).view(-1,)
+        pred,coordinate = model(batch).view(-1,)
         optimizer.zero_grad()
         loss = reg_criterion(pred, batch.y)
         loss.backward()
@@ -104,7 +104,7 @@ def main():
                         help='tensorboard log directory')
     parser.add_argument('--checkpoint_dir', type=str, default = '', help='directory to save checkpoint')
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
-    parser.add_argument('--pretrain-model', type=str, default="",
+    parser.add_argument('--pretrainmodel', type=str, default="",
                         help='pretrainmodelpath')
     args = parser.parse_args()
 
@@ -158,7 +158,10 @@ def main():
         model = GNN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
     else:
         raise ValueError('Invalid GNN type')
-
+    ###read_pretrainmodel
+    pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
+    model.load_state_dict(pretrain_model_state_dict)
+    ################
     num_params = sum(p.numel() for p in model.parameters())
     print(f'#Params: {num_params}')
 
