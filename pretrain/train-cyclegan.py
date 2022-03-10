@@ -21,6 +21,9 @@ sys.path.append("../")
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
 from data.PCQM4Mv2_xyz import *
+import wandb
+
+
 
 reg_criterion = torch.nn.L1Loss()
 D_criterion=torch.nn.BCELoss()
@@ -40,7 +43,7 @@ def train(netG, device, loader, optimizer):
         loss_accum += loss.detach().cpu().item()
 
     return loss_accum / (step + 1)
-def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
+def train_cyclegan(netG,netD,device, loader, optimizerG,optimizerD):
     netG.train()
     netD.train()
     G_losses = []
@@ -162,6 +165,10 @@ def main():
     parser.add_argument('--train_subset', action='store_true')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='input batch size for training (default: 256)')
+    parser.add_argument('--D_lr', type=float, default=0.001,
+                        help='lr for disciminator)')
+    parser.add_argument('--G_lr', type=float, default=0.001,
+                        help='lr for generator)')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--num_workers', type=int, default=0,
@@ -171,13 +178,23 @@ def main():
     parser.add_argument('--checkpoint_dir', type=str, default = '', help='directory to save checkpoint')
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     args = parser.parse_args()
-
+    wandb.init(project="3DInjection", entity="yxwang123",name=str(args))
     print(args)
 
     np.random.seed(42)
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
     random.seed(42)
+
+    wandb.config = {
+  "G_learning_rate": args.G_lr,
+  "D_learning_rate": args.D_lr,
+  "epochs": args.epochs,
+  "batch_size": args.batch_size,
+  "log_dir":args.log_dir,
+  "checkpoint_dir":args.checkpoint_dir,
+  "save_test_dir":args.save_test_dir,
+}
 
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
@@ -228,8 +245,8 @@ def main():
     num_params = sum(p.numel() for p in netG.parameters())
     print(f'#Params: {num_params}')
 
-    optimizerG = optim.Adam(netG.parameters(), lr=0.001)
-    optimizerD = optim.Adam(netD.parameters(), lr=0.001)
+    optimizerG = optim.Adam(netG.parameters(), lr=args.G_lr)
+    optimizerD = optim.Adam(netD.parameters(), lr=args.D_lr)
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
@@ -257,6 +274,7 @@ def main():
 
         print({'D_loss': D_loss, 'G_loss': G_loss})
 
+        wandb.log({'D_loss': D_loss, 'G_loss': G_loss})
         if args.log_dir != '':
             writer.add_scalar('D_loss', D_loss, epoch)
             writer.add_scalar('G_loss', G_loss, epoch)
@@ -270,6 +288,7 @@ def main():
 
         if G_loss < best_G_loss:
             best_G_loss = G_loss
+            best_epoch=epoch
         if D_loss < best_D_loss:
             best_D_loss = D_loss
         if args.checkpoint_dir != '':
@@ -292,7 +311,7 @@ def main():
         schedulerG.step()
         schedulerD.step()
             
-        print(f'Best G_loss so far: {G_loss}, best epoch: {best_epoch}')
+        print(f'Best G_loss so far: {best_G_loss}, best epoch: {best_epoch}')
 
     if args.log_dir != '':
         writer.close()

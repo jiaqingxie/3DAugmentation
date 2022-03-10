@@ -21,9 +21,13 @@ sys.path.append("../")
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
 from data.PCQM4Mv2_xyz import *
+import wandb
+
+
 
 reg_criterion = torch.nn.L1Loss()
 D_criterion=torch.nn.BCELoss()
+
 def train(netG, device, loader, optimizer):
     netG.train()
     loss_accum = 0
@@ -59,11 +63,12 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         batch.xyz_edge_index=batch.xyz_edge_index.long()
         batch = batch.to(device)
         # Forward pass real batch through D
-        
+        save_xyz=batch.xyz
         output = netD(batch).view(-1)
         b_size = output.size(0)
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
         # Calculate loss on all-real batch
+
         errD_real = D_criterion(output, label)
         # Calculate gradients for D in backward pass
         errD_real.backward()
@@ -78,6 +83,9 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         output = netD(batch).view(-1)
         # Calculate D's loss on the all-fake batch
         label.fill_(fake_label)
+
+        # ipdb.set_trace()
+
         errD_fake = D_criterion(output, label)
         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
         errD_fake.backward(retain_graph=True)
@@ -95,12 +103,17 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         # Since we just updated D, perform another forward pass of all-fake batch through D
         output = netD(batch).view(-1)
         # Calculate G's loss based on this output
+
+        # ipdb.set_trace()
+
         errG = D_criterion(output, label)
         # Calculate gradients for G
         errG.backward()
         D_G_z2 = output.mean().item()
         # Update G
         optimizerG.step()
+        
+        batch.xyz=save_xyz
         G_losses.append(errG.item())
         D_losses.append(errD.item())
 
@@ -162,6 +175,10 @@ def main():
     parser.add_argument('--train_subset', action='store_true')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='input batch size for training (default: 256)')
+    parser.add_argument('--D_lr', type=float, default=0.001,
+                        help='lr for disciminator)')
+    parser.add_argument('--G_lr', type=float, default=0.001,
+                        help='lr for generator)')
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--num_workers', type=int, default=0,
@@ -171,13 +188,22 @@ def main():
     parser.add_argument('--checkpoint_dir', type=str, default = '', help='directory to save checkpoint')
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     args = parser.parse_args()
-
+    wandb.init(project="3DInjection", entity="yxwang123",name=str(args),config={
+  "G_learning_rate": args.G_lr,
+  "D_learning_rate": args.D_lr,
+  "epochs": args.epochs,
+  "batch_size": args.batch_size,
+  "log_dir":args.log_dir,
+  "checkpoint_dir":args.checkpoint_dir,
+  "save_test_dir":args.save_test_dir,
+})
     print(args)
 
     np.random.seed(42)
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
     random.seed(42)
+
 
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
@@ -228,8 +254,8 @@ def main():
     num_params = sum(p.numel() for p in netG.parameters())
     print(f'#Params: {num_params}')
 
-    optimizerG = optim.Adam(netG.parameters(), lr=0.001)
-    optimizerD = optim.Adam(netD.parameters(), lr=0.001)
+    optimizerG = optim.Adam(netG.parameters(), lr=args.G_lr)
+    optimizerD = optim.Adam(netD.parameters(), lr=args.D_lr)
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
@@ -240,8 +266,8 @@ def main():
         schedulerD = StepLR(optimizerD, step_size=300, gamma=0.25)
         args.epochs = 1000
     else:
-        schedulerG = StepLR(optimizerG, step_size=30, gamma=0.25)
-        schedulerD = StepLR(optimizerD, step_size=30, gamma=0.25)
+        schedulerG = StepLR(optimizerG, step_size=1000, gamma=0.25)
+        schedulerD = StepLR(optimizerD, step_size=1000, gamma=0.25)
 
     best_epoch=1000
     
@@ -257,6 +283,7 @@ def main():
 
         print({'D_loss': D_loss, 'G_loss': G_loss})
 
+        wandb.log({'D_loss': D_loss, 'G_loss': G_loss})
         if args.log_dir != '':
             writer.add_scalar('D_loss', D_loss, epoch)
             writer.add_scalar('G_loss', G_loss, epoch)
@@ -270,6 +297,7 @@ def main():
 
         if G_loss < best_G_loss:
             best_G_loss = G_loss
+            best_epoch=epoch
         if D_loss < best_D_loss:
             best_D_loss = D_loss
         if args.checkpoint_dir != '':
@@ -277,7 +305,7 @@ def main():
             checkpoint = {'epoch': epoch, 'netG_state_dict': netG.state_dict(), 'optimizerG_state_dict': optimizerG.state_dict(), 'schedulerG_state_dict': schedulerG.state_dict(), 'best_G_loss': best_G_loss, 'num_params': num_params}
             torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
             checkpoint = {'epoch': epoch, 'netD_state_dict': netD.state_dict(), 'optimizerD_state_dict': optimizerD.state_dict(), 'schedulerD_state_dict': schedulerD.state_dict(), 'best_D_loss': best_G_loss, 'num_params': num_params}
-            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
+            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointD{epoch}.pt'))
             # if args.save_test_dir != '':
             #     testdev_pred = test(netG, device, testdev_loader)
             #     testdev_pred = testdev_pred.cpu().detach().numpy()
@@ -292,7 +320,7 @@ def main():
         schedulerG.step()
         schedulerD.step()
             
-        print(f'Best G_loss so far: {G_loss}, best epoch: {best_epoch}')
+        print(f'Best G_loss so far: {best_G_loss}, best epoch: {best_epoch}')
 
     if args.log_dir != '':
         writer.close()

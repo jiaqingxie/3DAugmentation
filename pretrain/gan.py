@@ -32,7 +32,7 @@ class Discriminatorfor3D(torch.nn.Module):
 
 class GNN_Disciminator(torch.nn.Module):
 
-    def __init__(self, num_tasks = 2, num_layers = 5, emb_dim = 300, 
+    def __init__(self, num_tasks = 1, num_layers = 5, emb_dim = 300, 
                     gnn_type = 'gin', virtual_node = False, residual = False, drop_ratio = 0, JK = "last", graph_pooling = "sum"):
         '''
             num_tasks (int): number of labels to be predicted
@@ -76,7 +76,8 @@ class GNN_Disciminator(torch.nn.Module):
         else:
             self.graph_pred_linear = torch.nn.Linear(self.emb_dim, self.num_tasks)
         self.coordinate_pred_linear=torch.nn.Linear(self.emb_dim,3)
-        self.activation=nn.Softmax(dim=-1)
+        self.activation=nn.Sigmoid()
+        
     def forward(self, batched_data):
         h_node = self.gnn_node(batched_data)
         h_graph = self.pool(h_node, batched_data.batch)
