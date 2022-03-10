@@ -7,7 +7,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR
 
 from gnn import GNN
-
+import sys
+sys.path.append("../")
 import os
 from tqdm import tqdm
 import argparse
@@ -30,7 +31,8 @@ def train(model, device, loader, optimizer):
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
 
-        pred,coordinate = model(batch).view(-1,)
+        pred,coordinate = model(batch)
+        pred=pred.view(-1,)
         optimizer.zero_grad()
         loss = reg_criterion(pred, batch.y)
         loss.backward()
@@ -89,6 +91,8 @@ def main():
                         help='graph pooling strategy mean or sum (default: sum)')
     parser.add_argument('--drop_ratio', type=float, default=0,
                         help='dropout ratio (default: 0)')
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='learning rate')
     parser.add_argument('--num_layers', type=int, default=5,
                         help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=600,
@@ -107,7 +111,14 @@ def main():
     parser.add_argument('--pretrainmodel', type=str, default="",
                         help='pretrainmodelpath')
     args = parser.parse_args()
-
+    wandb.init(project="3DInjection-Finetune", entity="yxwang123",name=str(args),config={
+  "lr": args.lr,
+  "epochs": args.epochs,
+  "batch_size": args.batch_size,
+  "log_dir":args.log_dir,
+  "checkpoint_dir":args.checkpoint_dir,
+  "save_test_dir":args.save_test_dir,
+})
     print(args)
 
     np.random.seed(42)
@@ -161,11 +172,12 @@ def main():
     ###read_pretrainmodel
     pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
     model.load_state_dict(pretrain_model_state_dict)
+    print("#####################reading pretrain model successfully#######################")
     ################
     num_params = sum(p.numel() for p in model.parameters())
     print(f'#Params: {num_params}')
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
@@ -187,7 +199,7 @@ def main():
         valid_mae = eval(model, device, valid_loader, evaluator)
 
         print({'Train': train_mae, 'Validation': valid_mae})
-
+        wandb.log({'Train': train_mae, 'Validation': valid_mae})
         if args.log_dir != '':
             writer.add_scalar('valid/mae', valid_mae, epoch)
             writer.add_scalar('train/mae', train_mae, epoch)
