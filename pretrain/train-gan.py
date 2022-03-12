@@ -63,8 +63,8 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         batch.xyz_edge_index=batch.xyz_edge_index.long()
         batch = batch.to(device)
         # Forward pass real batch through D
-        save_xyz=batch.xyz
-        output = netD(batch).view(-1)
+        
+        output = netD(batch.xyz, batch.xyz_edge_index, batch.xyz_edge_attr, batch.batch).view(-1)
         b_size = output.size(0)
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
         # Calculate loss on all-real batch
@@ -77,10 +77,9 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         ## Train with all-fake batch
         # Generate batch of latent vectors
         # Generate fake image batch with G
-        _,fake = netG(batch)
-        batch.xyz=fake
+        _,fake = netG(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # Classify all fake batch with D
-        output = netD(batch).view(-1)
+        output = netD(fake, batch.xyz_edge_index, batch.xyz_edge_attr, batch.batch).view(-1)
         # Calculate D's loss on the all-fake batch
         label.fill_(fake_label)
 
@@ -88,7 +87,7 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
 
         errD_fake = D_criterion(output, label)
         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
-        errD_fake.backward(retain_graph=True)
+        errD_fake.backward()
         D_G_z1 = output.mean().item()
         # Compute error of D as sum over the fake and the real batches
         errD = errD_real + errD_fake
@@ -101,7 +100,7 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         netG.zero_grad()
         label.fill_(real_label)  # fake labels are real for generator cost
         # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(batch).view(-1)
+        output = netD(fake, batch.xyz_edge_index, batch.xyz_edge_attr, batch.batch).view(-1)
         # Calculate G's loss based on this output
 
         # ipdb.set_trace()
@@ -113,7 +112,6 @@ def train_gan(netG,netD,device, loader, optimizerG,optimizerD):
         # Update G
         optimizerG.step()
         
-        batch.xyz=save_xyz
         G_losses.append(errG.item())
         D_losses.append(errD.item())
 

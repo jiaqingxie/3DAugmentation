@@ -6,8 +6,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR
 
-from gnn import GNN
-
+import itertools
 import os
 from tqdm import tqdm
 import argparse
@@ -15,7 +14,7 @@ import time
 import numpy as np
 import random
 
-from gan import Discriminatorfor3D,GNN_Disciminator
+from cyclegan import GNN_Disciminator_CycleGAN,GNN_Generator_CycleGAN
 import sys
 sys.path.append("../")
 ### importing OGB-LSC
@@ -27,85 +26,98 @@ import wandb
 
 reg_criterion = torch.nn.L1Loss()
 D_criterion=torch.nn.BCELoss()
-def train(netG, device, loader, optimizer):
-    netG.train()
-    loss_accum = 0
+criterionCycle = torch.nn.L1Loss()
+criterionIdt = torch.nn.L1Loss()
+def criterionGAN(pred,target):
+    loss_fc=torch.nn.BCELoss()
+    label = torch.Tensor([target]).float().to(pred.device).expand_as(pred)
+    return loss_fc(pred,label)
 
-    for step, batch in enumerate(tqdm(loader, desc="Iteration")):
-        batch = batch.to(device)
+def backward_D(netD,real,fake,edge_index,edge_attr,batch):
+    pred_real = netD(real,edge_index,edge_attr,batch)
+    loss_D_real = criterionGAN(pred_real, True)
+    # Fake
+    pred_fake = netD(fake.detach(),edge_index,edge_attr,batch)
+    loss_D_fake = criterionGAN(pred_fake, False)
+    # Combined loss and calculate gradients
+    loss_D = (loss_D_real + loss_D_fake) * 0.5
+    loss_D.backward()
+    return loss_D
 
-        pred = netG(batch).view(-1,)
-        optimizer.zero_grad()
-        loss = reg_criterion(pred, batch.y)
-        loss.backward()
-        optimizer.step()
-
-        loss_accum += loss.detach().cpu().item()
-
-    return loss_accum / (step + 1)
-def train_cyclegan(netG,netD,device, loader, optimizerG,optimizerD):
-    netG.train()
-    netD.train()
+def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimizerD):
+    netG_A.train()
+    netD_A.train()
+    netG_B.train()
+    netD_B.train()
     G_losses = []
     D_losses = []
     real_label=1
     fake_label=0
+    lambda_A=1
+    lambda_B=1
+    lambda_idt=0
+
             ###########################
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
-                ############################
-        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
-        ###########################
-        ## Train with all-real batch
-        netD.zero_grad()
-        # Format batch
         batch.xyz_edge_attr=batch.xyz_edge_attr.long()
         batch.xyz_edge_index=batch.xyz_edge_index.long()
-        batch = batch.to(device)
-        # Forward pass real batch through D
-        
-        output = netD(batch).view(-1)
-        b_size = output.size(0)
-        label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
-        # Calculate loss on all-real batch
-        errD_real = D_criterion(output, label)
-        # Calculate gradients for D in backward pass
-        errD_real.backward()
+        batch=batch.to(device)
 
-
-        ## Train with all-fake batch
-        # Generate batch of latent vectors
-        # Generate fake image batch with G
-        _,fake = netG(batch)
-        batch.xyz=fake
-        # Classify all fake batch with D
-        output = netD(batch).view(-1)
-        # Calculate D's loss on the all-fake batch
-        label.fill_(fake_label)
-        errD_fake = D_criterion(output, label)
-        # Calculate the gradients for this batch, accumulated (summed) with previous gradients
-        errD_fake.backward(retain_graph=True)
-        D_G_z1 = output.mean().item()
-        # Compute error of D as sum over the fake and the real batches
-        errD = errD_real + errD_fake
-        # Update D
+        #####forward######
+        _,fake_xyz=netG_A(batch.x,batch.edge_index,batch.edge_attr,batch.batch)
+        _,rec_x=netG_B(fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+        _,fake_x=netG_B(batch.xyz,batch.edge_index,batch.edge_attr,batch.batch)
+        _,rec_xyz=netG_A(fake_x,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+        ##################Ds don't require grad at this time
+        for net in [netD_A,netD_B]:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad=False
+        #############
+        optimizerG.zero_grad()
+        """Calculate the loss for generators G_A and G_B"""
+        ###identity loss######
+        if lambda_idt > 0:
+            # # G_A should be identity if real_B is fed: ||G_A(B) - B||
+            # idt_A = netG_A(real_B)
+            # loss_idt_A = criterionIdt(idt_A, real_B) * lambda_B * lambda_idt
+            # # G_B should be identity if real_A is fed: ||G_B(A) - A||
+            # idt_B = netG_B(real_A)
+            # loss_idt_B = criterionIdt(idt_B, real_A) * lambda_A * lambda_idt
+            pass
+        else:
+            loss_idt_A = 0
+            loss_idt_B = 0
+        #########
+        # GAN loss D_A(G_A(A))
+        loss_G_A = criterionGAN(netD_A(fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch), 1.0)
+        # GAN loss D_B(G_B(B))
+        loss_G_B = criterionGAN(netD_B(fake_x,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch), 1.0)
+        # Forward cycle loss || G_B(G_A(A)) - A||
+        loss_cycle_A = criterionCycle(rec_x, netG_A.gnn_node.atom_encoder(batch.x)) * lambda_A
+        # Backward cycle loss || G_A(G_B(B)) - B||
+        loss_cycle_B = criterionCycle(rec_xyz, batch.xyz) * lambda_B
+        # combined loss and calculate gradients
+        loss_G = loss_G_A + loss_G_B + loss_cycle_A + loss_cycle_B + loss_idt_A + loss_idt_B
+        loss_G.backward()
+        G_losses.append(loss_G)
+        optimizerG.step()
+        ###########D_A and D_B##########
+                ##################Ds require grad at this time
+        for net in [netD_A,netD_B]:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad=True
+        #############
+        optimizerD.zero_grad()
+        D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+        D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
+        D_loss=D_A_loss+D_B_loss
+        D_losses.append(D_loss)
         optimizerD.step()
 
-        ############################
-        # (2) Update G network: maximize log(D(G(z)))
-        ###########################
-        netG.zero_grad()
-        label.fill_(real_label)  # fake labels are real for generator cost
-        # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(batch).view(-1)
-        # Calculate G's loss based on this output
-        errG = D_criterion(output, label)
-        # Calculate gradients for G
-        errG.backward()
-        D_G_z2 = output.mean().item()
-        # Update G
-        optimizerG.step()
-        G_losses.append(errG.item())
-        D_losses.append(errD.item())
+        ##########
+
 
     return sum(D_losses)/(step+1),sum(G_losses)/(step+1)
         # Output training stats
@@ -178,15 +190,7 @@ def main():
     parser.add_argument('--checkpoint_dir', type=str, default = '', help='directory to save checkpoint')
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     args = parser.parse_args()
-    wandb.init(project="3DInjection", entity="yxwang123",name=str(args))
-    print(args)
-
-    np.random.seed(42)
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
-    random.seed(42)
-
-    wandb.config = {
+    wandb.init(project="3DInjection", entity="yxwang123",name="cycleGAN"+str(args),config={
   "G_learning_rate": args.G_lr,
   "D_learning_rate": args.D_lr,
   "epochs": args.epochs,
@@ -194,7 +198,14 @@ def main():
   "log_dir":args.log_dir,
   "checkpoint_dir":args.checkpoint_dir,
   "save_test_dir":args.save_test_dir,
-}
+})
+    print(args)
+
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    random.seed(42)
+
 
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
@@ -231,22 +242,25 @@ def main():
     }
 
     if args.gnn == 'gin':
-        netG = GNN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        netG_A = GNN_Generator_CycleGAN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        netG_B = GNN_Generator_CycleGAN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        netD_A=GNN_Disciminator_CycleGAN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        netD_B=GNN_Disciminator_CycleGAN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gin-virtual':
-        netG = GNN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
+        netG = GNN_Generator_CycleGAN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
     elif args.gnn == 'gcn':
-        netG = GNN(gnn_type = 'gcn', virtual_node = False, **shared_params).to(device)
+        netG = GNN_Generator_CycleGAN(gnn_type = 'gcn', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gcn-virtual':
-        netG = GNN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
+        netG = GNN_Generator_CycleGAN(gnn_type = 'gcn', virtual_node = True, **shared_params).to(device)
     else:
         raise ValueError('Invalid GNN type')
-    netD=GNN_Disciminator().to(device)
 
-    num_params = sum(p.numel() for p in netG.parameters())
+
+    num_params = sum(p.numel() for p in netG_A.parameters())
     print(f'#Params: {num_params}')
 
-    optimizerG = optim.Adam(netG.parameters(), lr=args.G_lr)
-    optimizerD = optim.Adam(netD.parameters(), lr=args.D_lr)
+    optimizerG = optim.Adam(itertools.chain(netG_A.parameters(),netG_B.parameters()), lr=args.G_lr)
+    optimizerD = optim.Adam(itertools.chain(netD_A.parameters(),netD_B.parameters()), lr=args.D_lr)
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
@@ -257,8 +271,8 @@ def main():
         schedulerD = StepLR(optimizerD, step_size=300, gamma=0.25)
         args.epochs = 1000
     else:
-        schedulerG = StepLR(optimizerG, step_size=30, gamma=0.25)
-        schedulerD = StepLR(optimizerD, step_size=30, gamma=0.25)
+        schedulerG = StepLR(optimizerG, step_size=1000, gamma=0.25)
+        schedulerD = StepLR(optimizerD, step_size=1000, gamma=0.25)
 
     best_epoch=1000
     
@@ -267,7 +281,7 @@ def main():
         print("=====Epoch {}".format(epoch))
         print('Training...')
         
-        D_loss, G_loss = train_gan(netG,netD, device, train_loader, optimizerG,optimizerD)
+        D_loss, G_loss = train_cyclegan(netG_A,netG_B,netD_A,netD_B, device, train_loader, optimizerG,optimizerD)
 
         # print('Evaluating...')
         # valid_mae = eval(netG, device, valid_loader, evaluator)
@@ -293,10 +307,10 @@ def main():
             best_D_loss = D_loss
         if args.checkpoint_dir != '':
             print('Saving checkpoint...')
-            checkpoint = {'epoch': epoch, 'netG_state_dict': netG.state_dict(), 'optimizerG_state_dict': optimizerG.state_dict(), 'schedulerG_state_dict': schedulerG.state_dict(), 'best_G_loss': best_G_loss, 'num_params': num_params}
-            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
-            checkpoint = {'epoch': epoch, 'netD_state_dict': netD.state_dict(), 'optimizerD_state_dict': optimizerD.state_dict(), 'schedulerD_state_dict': schedulerD.state_dict(), 'best_D_loss': best_G_loss, 'num_params': num_params}
-            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG{epoch}.pt'))
+            checkpoint = {'epoch': epoch, 'netG_state_dict': netG_A.state_dict(), 'optimizerG_state_dict': optimizerG.state_dict(), 'schedulerG_state_dict': schedulerG.state_dict(), 'best_G_loss': best_G_loss, 'num_params': num_params}
+            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointG_A{epoch}.pt'))
+            checkpoint = {'epoch': epoch, 'netD_state_dict': netD_A.state_dict(), 'optimizerD_state_dict': optimizerD.state_dict(), 'schedulerD_state_dict': schedulerD.state_dict(), 'best_D_loss': best_G_loss, 'num_params': num_params}
+            torch.save(checkpoint, os.path.join(args.checkpoint_dir, f'checkpointD_A{epoch}.pt'))
             # if args.save_test_dir != '':
             #     testdev_pred = test(netG, device, testdev_loader)
             #     testdev_pred = testdev_pred.cpu().detach().numpy()

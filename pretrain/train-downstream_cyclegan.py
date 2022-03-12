@@ -161,9 +161,9 @@ def main():
     }
 
     if args.gnn == 'gin':
-        model = GNN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
+        model = GNN_Generator_CycleGAN(gnn_type = 'gin', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gin-virtual':
-        model = GNN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
+        model = GNN_Generator_CycleGAN(gnn_type = 'gin', virtual_node = True, **shared_params).to(device)
     elif args.gnn == 'gcn':
         model = GNN(gnn_type = 'gcn', virtual_node = False, **shared_params).to(device)
     elif args.gnn == 'gcn-virtual':
@@ -171,8 +171,8 @@ def main():
     else:
         raise ValueError('Invalid GNN type')
     ###read_pretrainmodel
-    # pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
-    # model.load_state_dict(pretrain_model_state_dict)
+    pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
+    model.load_state_dict(pretrain_model_state_dict)
     print("#####################reading pretrain model successfully#######################")
     ################
     num_params = sum(p.numel() for p in model.parameters())

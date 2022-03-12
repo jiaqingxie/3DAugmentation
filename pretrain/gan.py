@@ -78,10 +78,12 @@ class GNN_Disciminator(torch.nn.Module):
         self.coordinate_pred_linear=torch.nn.Linear(self.emb_dim,3)
         self.activation=nn.Sigmoid()
         
-    def forward(self, batched_data):
-        h_node = self.gnn_node(batched_data)
-        h_graph = self.pool(h_node, batched_data.batch)
+    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch ):
+
+        h_node = self.gnn_node(xyz, xyz_edge_index, xyz_edge_attr, batch )
+        h_graph = self.pool(h_node, batch)
         output = self.activation(self.graph_pred_linear(h_graph))
+
 
         if self.training:
             return output

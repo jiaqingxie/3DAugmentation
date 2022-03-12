@@ -102,8 +102,8 @@ class GNN_node(torch.nn.Module):
                 
             self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
 
-    def forward(self, batched_data):
-        x, edge_index, edge_attr, batch = batched_data.x, batched_data.edge_index, batched_data.edge_attr, batched_data.batch
+    def forward(self, x, edge_index, edge_attr, batch):
+
 
         ### computing input node embedding
 
@@ -270,12 +270,90 @@ class GNN_node_discriminator(torch.nn.Module):
                 
             self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
         self.threed2embedding=nn.Linear(3,emb_dim)
-    def forward(self, batched_data):
-        xyz, xyz_edge_index, xyz_edge_attr, batch = batched_data.xyz, batched_data.xyz_edge_index, batched_data.xyz_edge_attr, batched_data.batch
+    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch):
+        
 
         ### computing input node embedding
 
         h_list = [self.threed2embedding(xyz)]
+        for layer in range(self.num_layers):
+
+            h = self.convs[layer](h_list[layer], xyz_edge_index, xyz_edge_attr)
+            h = self.batch_norms[layer](h)
+
+            if layer == self.num_layers - 1:
+                #remove relu for the last layer
+                h = F.dropout(h, self.drop_ratio, training = self.training)
+            else:
+                h = F.dropout(F.relu(h), self.drop_ratio, training = self.training)
+
+            if self.residual:
+                h += h_list[layer]
+
+            h_list.append(h)
+
+        ### Different implementations of Jk-concat
+        if self.JK == "last":
+            node_representation = h_list[-1]
+        elif self.JK == "sum":
+            node_representation = 0
+            for layer in range(self.num_layers + 1):
+                node_representation += h_list[layer]
+
+        return node_representation
+
+class GNN_node_cyclegan(torch.nn.Module):
+    """
+    Output:
+        node representations
+    """
+    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin'):
+        '''
+            emb_dim (int): node embedding dimensionality
+            num_layers (int): number of GNN message passing layers
+        '''
+
+        super(GNN_node_cyclegan, self).__init__()
+        self.num_layers = num_layers
+        self.drop_ratio = drop_ratio
+        self.emb_dim=emb_dim
+        self.JK = JK
+        ### add residual connection or not
+        self.residual = residual
+
+        if self.num_layers < 2:
+            raise ValueError("Number of GNN layers must be greater than 1.")
+
+
+
+        ###List of GNNs
+        self.convs = torch.nn.ModuleList()
+        self.batch_norms = torch.nn.ModuleList()
+        
+        for layer in range(num_layers):
+            if gnn_type == 'gin':
+                self.convs.append(GINConv(emb_dim))
+            elif gnn_type == 'gcn':
+                self.convs.append(GCNConv(emb_dim))
+            else:
+                ValueError('Undefined GNN type called {}'.format(gnn_type))
+                
+            self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
+        self.threed2embedding=nn.Linear(3,emb_dim)
+        self.atom_encoder = AtomEncoder(emb_dim)
+    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch):
+
+        if xyz.size(-1)==3:
+            h_list = [self.threed2embedding(xyz)]
+        elif xyz.size(-1)==9:
+            h_list = [self.atom_encoder(xyz)]
+        elif xyz.size(-1)==self.emb_dim:
+            h_list = [xyz]
+        else:
+            assert False,"examine input size, not supported"
+        ### computing input node embedding
+
+        
         for layer in range(self.num_layers):
 
             h = self.convs[layer](h_list[layer], xyz_edge_index, xyz_edge_attr)
