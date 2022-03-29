@@ -14,7 +14,6 @@ import torch
 from ogb.lsc import PygPCQM4Mv2Dataset,PCQM4Mv2Dataset
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
-
 from rdkit import Chem
 from itertools import permutations
 
@@ -134,27 +133,27 @@ def normalizeline(line):
     linelist=[x for x in line.split(" ") if x!='']
     return linelist
 
-def extractxyzfromMolblock(molblock):
-    lines=[normalizeline(x) for x in molblock.split("\n")]
+# def extractxyzfromMolblock(molblock):
+#     lines=[normalizeline(x) for x in molblock.split("\n")]
     
-    lenline=[len(x) for x in lines]
-    maxlength=max(lenline)
-    xyzcoordinate=[]
-    atom_type=[]
-    for line in lines:
-        if len(line)==maxlength:
-            xyz=[float(x) for x in line[0:3]]
-            type=line[4]
-            xyzcoordinate.append(xyz)
-            atom_type.append(type)
-    return xyzcoordinate,atom_type
+#     lenline=[len(x) for x in lines]
+#     maxlength=max(lenline)
+#     xyzcoordinate=[]
+#     atom_type=[]
+#     for line in lines:
+#         if len(line)==maxlength:
+#             xyz=[float(x) for x in line[0:3]]
+#             type=line[4]
+#             xyzcoordinate.append(xyz)
+#             atom_type.append(type)
+#     return xyzcoordinate,atom_type
 
 
-def readsdf(index):
-    suppl = Chem.SDMolSupplier('/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sdf')
-    mol=suppl[index]
-    molblock=Chem.MolToMolBlock(mol)
-    return extractxyzfromMolblock(molblock)
+def readsdf(path='/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sdf'):
+    suppl = Chem.SDMolSupplier(path)
+
+
+    return suppl
 
 class xyzData(Data):
     def __init__(self,xyz=None,**kwargs):
@@ -163,7 +162,9 @@ class xyzData(Data):
         self.xyz_edge_index=None
         self.xyz_edge_attr=None
     
-class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
+
+
+class PygPCQM4Mv2Dataset_SDF(InMemoryDataset):
     def __init__(self, root = 'dataset', smiles2graph = smiles2graph, transform=None, pre_transform = None):
         '''
             Pytorch Geometric PCQM4Mv2 dataset object
@@ -174,7 +175,7 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
 
         self.original_root = root
         self.smiles2graph = smiles2graph
-        self.folder = osp.join(root, 'pcqm4m-v2')
+        self.folder = osp.join(root, 'pcqm4m-v2_SDF')
         self.version = 1
         
         # Old url hosted at Stanford
@@ -189,7 +190,7 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
             if input('Will you update the dataset now? (y/N)\n').lower() == 'y':
                 shutil.rmtree(self.folder)
 
-        super(PygPCQM4Mv2Dataset_xyz, self).__init__(self.folder, transform, pre_transform)
+        super(PygPCQM4Mv2Dataset_SDF, self).__init__(self.folder, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
         
 
@@ -214,15 +215,35 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
         data_df = pd.read_csv(osp.join(self.raw_dir, 'data.csv.gz'))
         smiles_list = data_df['smiles']
         homolumogap_list = data_df['homolumogap']
-        xyzpathdict=readxyzpath("/remote-home/yxwang/Graph/dataset/pcqm4m-v2_xyz")
+
         print('Converting SMILES strings into graphs...')
         data_list = []
+
         # import ipdb
         # ipdb.set_trace()
-        
-            
+        ############reading from SDF
+        suppl=readsdf()
         for i in tqdm(range(len(smiles_list))):
-            
+            mol=suppl[i]
+            atoms=[]
+            conformers = list(iter(mol.GetConformers()))
+            c=conformers[0]
+            coordinates=c.GetPositions()
+            for atom in mol.GetAtoms():
+                atoms.append(atom_to_feature_vector(atom))
+            edges_list=[]
+            edge_features_list=[]
+            for bond in mol.GetBonds():
+                k = bond.GetBeginAtomIdx()
+                j = bond.GetEndAtomIdx()
+                edge_feature = bond_to_feature_vector(bond)
+
+            # add edges in both directions
+                edges_list.append((k, j))
+                edge_features_list.append(edge_feature)
+                edges_list.append((j, k))
+                edge_features_list.append(edge_feature)
+
             data = xyzData()
 
             smiles = smiles_list[i]
@@ -231,41 +252,24 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
             
             assert(len(graph['edge_feat']) == graph['edge_index'].shape[1])
             assert(len(graph['node_feat']) == graph['num_nodes'])
+            assert(len(graph['node_feat']) == len(atoms))
+            data.__num_nodes__ = int(len(atoms))
+            data.edge_index = torch.Tensor(edges_list).to(torch.int64).T
+            data.edge_attr = torch.Tensor(edge_features_list).to(torch.int64)
+            data.x = torch.Tensor(atoms).to(torch.int64)
+            ########
+            ##
+            # Draw.MolToFile(Chem.MolFromSmiles(smiles),'test_0_SDF{i}.png')
+            # Draw.MolToFile(mol,'testSDF{i}.png') 
 
-            data.__num_nodes__ = int(graph['num_nodes'])
-            data.edge_index = torch.from_numpy(graph['edge_index']).to(torch.int64)
-            data.edge_attr = torch.from_numpy(graph['edge_feat']).to(torch.int64)
-            data.x = torch.from_numpy(graph['node_feat']).to(torch.int64)
             data.y = torch.Tensor([homolumogap])
+
             if i<=3378605:
-                notoklist=[140686,1652244,1761811,1894228,3250062,3284202,3330645]
-                if i in notoklist:
-                    import ipdb
-                    print("###########################deposit########### please exit")
-                    ipdb.set_trace()
-                    xyz_coordinates, atom_types=readsdf(i)
-                else:
-
-                    xyz_coordinates, atom_types=readxyz(xyzpathdict[i])
-                try:
-                    assert len(xyz_coordinates)==int(graph['num_nodes'])
-                except:
-                    print(i)
-                data.xyz=torch.Tensor(xyz_coordinates)
-
+                
+                
+                data.xyz=torch.Tensor(coordinates)
             else:
                 data.xyz=torch.Tensor([float('nan'),float('nan'),float('nan')]).expand(int(graph['num_nodes']),3)
-            
-            data.xyz_edge_index=torch.Tensor(list(permutations(range(int(graph['num_nodes'])),2))).T.long()
-
-            try:
-                data.xyz_edge_attr=torch.zeros([data.xyz_edge_index.shape[1],3]).long()
-            except:
-
-                data.xyz_edge_attr=data.edge_attr
-                data.xyz_edge_index=data.edge_index
-                print(i)
-
             data_list.append(data)
 
         # double-check prediction target
@@ -289,12 +293,11 @@ class PygPCQM4Mv2Dataset_xyz(InMemoryDataset):
 
 
 
-
 if __name__=="__main__":
 
-    dataset=PygPCQM4Mv2Dataset_xyz(root="/remote-home/yxwang/Graph/dataset",smiles2graph=smiles2graph)
+    dataset=PygPCQM4Mv2Dataset_SDF(root="/remote-home/yxwang/Graph/dataset",smiles2graph=smiles2graph)
     # originaldataset=PCQM4Mv2Dataset(root="/remote-home/yxwang/Graph/dataset",only_smiles=True)
-    print(dataset[0]["y"])
+    print(dataset[0])
 
     # suppl = Chem.SDMolSupplier('/remote-home/yxwang/Graph/dataset/pcqm4m-v2-train.sdf')
 

@@ -4,7 +4,7 @@ from torch_geometric.data import DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR,ExponentialLR
 
 import itertools
 import os
@@ -56,7 +56,8 @@ def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimi
     lambda_A=1
     lambda_B=1
     lambda_idt=0
-
+    D_step=1
+    D_count=0
             ###########################
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch.xyz_edge_attr=batch.xyz_edge_attr.long()
@@ -109,13 +110,26 @@ def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimi
                 for param in net.parameters():
                     param.requires_grad=True
         #############
-        optimizerD.zero_grad()
-        D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
-        D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
-        D_loss=D_A_loss+D_B_loss
-        D_losses.append(D_loss)
-        optimizerD.step()
-
+        if D_count==0:
+            optimizerD.zero_grad()
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
+            D_loss=D_A_loss+D_B_loss
+            D_losses.append(D_loss)
+            D_count+=1
+        elif D_count==D_step:
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
+            D_loss=D_A_loss+D_B_loss
+            D_count=0
+            optimizerD.step()
+        else:
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
+            D_loss=D_A_loss+D_B_loss
+            D_count+=1
+        
+           
         ##########
 
 
@@ -271,8 +285,8 @@ def main():
         schedulerD = StepLR(optimizerD, step_size=300, gamma=0.25)
         args.epochs = 1000
     else:
-        schedulerG = StepLR(optimizerG, step_size=1000, gamma=0.25)
-        schedulerD = StepLR(optimizerD, step_size=1000, gamma=0.25)
+        schedulerG = ExponentialLR(optimizerG, gamma=0.25)
+        schedulerD = ExponentialLR(optimizerD, gamma=0.25)
 
     best_epoch=1000
     
