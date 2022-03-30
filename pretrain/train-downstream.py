@@ -20,8 +20,8 @@ import random
 
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
-from data.PCQM4Mv2_xyz import *
 import wandb
+from data.PCQM4Mv2_SDF import *
 
 reg_criterion = torch.nn.L1Loss()
 
@@ -130,7 +130,7 @@ def main():
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ### automatic dataloading and splitting
-    dataset = PygPCQM4Mv2Dataset(root = '/remote-home/yxwang/Graph/dataset')
+    dataset = PygPCQM4Mv2Dataset_SDF(root = '/remote-home/yxwang/Graph/dataset')
 
     split_idx = dataset.get_idx_split()
 

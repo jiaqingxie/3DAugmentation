@@ -20,7 +20,7 @@ import random
 
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
-from data.PCQM4Mv2_xyz import *
+from data.PCQM4Mv2_SDF import *
 import wandb
 
 reg_criterion = torch.nn.L1Loss()
@@ -84,6 +84,7 @@ def test(model, device, loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='GNN baselines on pcqm4m with Pytorch Geometrics')
+    parser.add_argument('--use_pretrain', action='store_true')
     parser.add_argument('--device', type=int, default=0,
                         help='which gpu to use if any (default: 0)')
     parser.add_argument('--gnn', type=str, default='gin-virtual',
@@ -111,6 +112,7 @@ def main():
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     parser.add_argument('--pretrainmodel', type=str, default="",
                         help='pretrainmodelpath')
+    
     args = parser.parse_args()
     wandb.init(project="3DInjection-Finetune", entity="yxwang123",name=str(args),config={
   "lr": args.lr,
@@ -120,6 +122,7 @@ def main():
   "checkpoint_dir":args.checkpoint_dir,
   "save_test_dir":args.save_test_dir,
 })
+
     print(args)
 
     np.random.seed(42)
@@ -130,7 +133,7 @@ def main():
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     ### automatic dataloading and splitting
-    dataset = PygPCQM4Mv2Dataset(root = '/remote-home/yxwang/Graph/dataset')
+    dataset = PygPCQM4Mv2Dataset_SDF(root = '/remote-home/yxwang/Graph/dataset')
 
     split_idx = dataset.get_idx_split()
 
@@ -171,9 +174,13 @@ def main():
     else:
         raise ValueError('Invalid GNN type')
     ###read_pretrainmodel
-    pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
-    model.load_state_dict(pretrain_model_state_dict)
-    print("#####################reading pretrain model successfully#######################")
+    if args.use_pretrain:
+        pretrain_model_state_dict=torch.load(args.pretrainmodel)["netG_state_dict"]
+        model.load_state_dict(pretrain_model_state_dict)
+        print("#####################reading pretrain model successfully#######################")
+    else:
+        print("########################don't use pretrainmodel####################")
+    
     ################
     num_params = sum(p.numel() for p in model.parameters())
     print(f'#Params: {num_params}')

@@ -60,9 +60,9 @@ class GNN_Disciminator_CycleGAN(torch.nn.Module):
         self.coordinate_pred_linear=torch.nn.Linear(self.emb_dim,3)
         self.activation=nn.Sigmoid()
         
-    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch ):
+    def forward(self, xyz, edge_index, edge_attr, batch ):
 
-        h_node = self.gnn_node(xyz, xyz_edge_index, xyz_edge_attr, batch )
+        h_node = self.gnn_node(xyz, edge_index, edge_attr, batch )
         h_graph = self.pool(h_node, batch)
         output = self.activation(self.graph_pred_linear(h_graph))
 
@@ -120,9 +120,9 @@ class GNN_Generator_CycleGAN(torch.nn.Module):
         self.coordinate_pred_linear=torch.nn.Linear(self.emb_dim,3)
 
         self.twod_emb_linear=torch.nn.Linear(self.emb_dim,emb_dim)
-    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch ):
+    def forward(self, xyz, edge_index, edge_attr, batch ):
 
-        h_node = self.gnn_node(xyz, xyz_edge_index, xyz_edge_attr, batch )
+        h_node = self.gnn_node(xyz, edge_index, edge_attr, batch )
         h_graph = self.pool(h_node, batch)
         output = self.graph_pred_linear(h_graph)
         if xyz.size(-1)==3:

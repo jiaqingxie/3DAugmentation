@@ -60,15 +60,13 @@ def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimi
     D_count=0
             ###########################
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
-        batch.xyz_edge_attr=batch.xyz_edge_attr.long()
-        batch.xyz_edge_index=batch.xyz_edge_index.long()
         batch=batch.to(device)
 
         #####forward######
         _,fake_xyz=netG_A(batch.x,batch.edge_index,batch.edge_attr,batch.batch)
-        _,rec_x=netG_B(fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+        _,rec_x=netG_B(fake_xyz,batch.edge_index,batch.edge_attr,batch.batch)
         _,fake_x=netG_B(batch.xyz,batch.edge_index,batch.edge_attr,batch.batch)
-        _,rec_xyz=netG_A(fake_x,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+        _,rec_xyz=netG_A(fake_x,batch.edge_index,batch.edge_attr,batch.batch)
         ##################Ds don't require grad at this time
         for net in [netD_A,netD_B]:
             if net is not None:
@@ -91,9 +89,9 @@ def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimi
             loss_idt_B = 0
         #########
         # GAN loss D_A(G_A(A))
-        loss_G_A = criterionGAN(netD_A(fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch), 1.0)
+        loss_G_A = criterionGAN(netD_A(fake_xyz,batch.edge_index,batch.edge_attr,batch.batch), 1.0)
         # GAN loss D_B(G_B(B))
-        loss_G_B = criterionGAN(netD_B(fake_x,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch), 1.0)
+        loss_G_B = criterionGAN(netD_B(fake_x,batch.edge_index,batch.edge_attr,batch.batch), 1.0)
         # Forward cycle loss || G_B(G_A(A)) - A||
         loss_cycle_A = criterionCycle(rec_x, netG_A.gnn_node.atom_encoder(batch.x)) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
@@ -112,19 +110,19 @@ def train_cyclegan(netG_A,netG_B,netD_A,netD_B,device, loader, optimizerG,optimi
         #############
         if D_count==0:
             optimizerD.zero_grad()
-            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.edge_index,batch.edge_attr,batch.batch)
             D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
             D_loss=D_A_loss+D_B_loss
             D_losses.append(D_loss)
             D_count+=1
         elif D_count==D_step:
-            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.edge_index,batch.edge_attr,batch.batch)
             D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
             D_loss=D_A_loss+D_B_loss
             D_count=0
             optimizerD.step()
         else:
-            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.xyz_edge_index,batch.xyz_edge_attr,batch.batch)
+            D_A_loss=backward_D(netD_A,batch.xyz,fake_xyz,batch.edge_index,batch.edge_attr,batch.batch)
             D_B_loss=backward_D(netD_B,batch.x,fake_x,batch.edge_index,batch.edge_attr,batch.batch)
             D_loss=D_A_loss+D_B_loss
             D_count+=1

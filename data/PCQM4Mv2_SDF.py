@@ -224,51 +224,66 @@ class PygPCQM4Mv2Dataset_SDF(InMemoryDataset):
         ############reading from SDF
         suppl=readsdf()
         for i in tqdm(range(len(smiles_list))):
-            mol=suppl[i]
-            atoms=[]
-            conformers = list(iter(mol.GetConformers()))
-            c=conformers[0]
-            coordinates=c.GetPositions()
-            for atom in mol.GetAtoms():
-                atoms.append(atom_to_feature_vector(atom))
-            edges_list=[]
-            edge_features_list=[]
-            for bond in mol.GetBonds():
-                k = bond.GetBeginAtomIdx()
-                j = bond.GetEndAtomIdx()
-                edge_feature = bond_to_feature_vector(bond)
-
-            # add edges in both directions
-                edges_list.append((k, j))
-                edge_features_list.append(edge_feature)
-                edges_list.append((j, k))
-                edge_features_list.append(edge_feature)
-
-            data = xyzData()
-
-            smiles = smiles_list[i]
-            homolumogap = homolumogap_list[i]
-            graph = self.smiles2graph(smiles)
             
-            assert(len(graph['edge_feat']) == graph['edge_index'].shape[1])
-            assert(len(graph['node_feat']) == graph['num_nodes'])
-            assert(len(graph['node_feat']) == len(atoms))
-            data.__num_nodes__ = int(len(atoms))
-            data.edge_index = torch.Tensor(edges_list).to(torch.int64).T
-            data.edge_attr = torch.Tensor(edge_features_list).to(torch.int64)
-            data.x = torch.Tensor(atoms).to(torch.int64)
-            ########
-            ##
-            # Draw.MolToFile(Chem.MolFromSmiles(smiles),'test_0_SDF{i}.png')
-            # Draw.MolToFile(mol,'testSDF{i}.png') 
-
-            data.y = torch.Tensor([homolumogap])
+                
 
             if i<=3378605:
+                mol=suppl[i]
+                atoms=[]
+                conformers = next(iter(mol.GetConformers()))
+                c=conformers
+                coordinates=c.GetPositions()
+                for atom in mol.GetAtoms():
+                    atoms.append(atom_to_feature_vector(atom))
+                edges_list=[]
+                edge_features_list=[]
+                for bond in mol.GetBonds():
+                    k = bond.GetBeginAtomIdx()
+                    j = bond.GetEndAtomIdx()
+                    edge_feature = bond_to_feature_vector(bond)
+
+                # add edges in both directions
+                    edges_list.append((k, j))
+                    edge_features_list.append(edge_feature)
+                    edges_list.append((j, k))
+                    edge_features_list.append(edge_feature)
+
+                data = xyzData()
+                homolumogap = homolumogap_list[i]
+                # smiles = smiles_list[i]
                 
+                # graph = self.smiles2graph(smiles)
+                
+                # assert(len(graph['edge_feat']) == graph['edge_index'].shape[1])
+                # assert(len(graph['node_feat']) == graph['num_nodes'])
+                # assert(len(graph['node_feat']) == len(atoms))
+                data.__num_nodes__ = int(len(atoms))
+                data.edge_index = torch.Tensor(edges_list).to(torch.int64).T
+                data.edge_attr = torch.Tensor(edge_features_list).to(torch.int64)
+                data.x = torch.Tensor(atoms).to(torch.int64)
+                ########
+                ##
+                # Draw.MolToFile(Chem.MolFromSmiles(smiles),'test_0_SDF{i}.png')
+                # Draw.MolToFile(mol,'testSDF{i}.png') 
+
+                data.y = torch.Tensor([homolumogap])
                 
                 data.xyz=torch.Tensor(coordinates)
             else:
+                data = xyzData()
+
+                smiles = smiles_list[i]
+                homolumogap = homolumogap_list[i]
+                graph = self.smiles2graph(smiles)
+                
+                assert(len(graph['edge_feat']) == graph['edge_index'].shape[1])
+                assert(len(graph['node_feat']) == graph['num_nodes'])
+
+                data.__num_nodes__ = int(graph['num_nodes'])
+                data.edge_index = torch.from_numpy(graph['edge_index']).to(torch.int64)
+                data.edge_attr = torch.from_numpy(graph['edge_feat']).to(torch.int64)
+                data.x = torch.from_numpy(graph['node_feat']).to(torch.int64)
+                data.y = torch.Tensor([homolumogap])
                 data.xyz=torch.Tensor([float('nan'),float('nan'),float('nan')]).expand(int(graph['num_nodes']),3)
             data_list.append(data)
 
