@@ -97,7 +97,6 @@ class LinReg(nn.Module):
         
         h_graph = self.pool(embed, data.batch)
         output = self.graph_pred_linear(h_graph)
-        
         if self.training:
             return output
         else:

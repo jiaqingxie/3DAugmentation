@@ -49,27 +49,28 @@ class GNN_2dEnc(torch.nn.Module):
                 self.vls.append(VirtualNode(emb_dim, emb_dim, dropout = self.drop_ratio))
 
     def forward(self, data):
-        data, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
+        data_, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
         ### computing input node embedding
-        h_list = [self.atom_encoder(data)]
+        h_list = [self.atom_encoder(data_)]
         for layer in range(self.num_layers):
             # virtual
             if self.virtual:
                 h, vx = self.vls[layer].update_node_emb(h, edge_index, batch)
             h = self.convs[layer](h_list[layer], edge_index, edge_attr)
             h = self.batch_norms[layer](h)
-
+            
             if layer == self.num_layers - 1:
                 #remove relu for the last layer
                 h = F.dropout(h, self.drop_ratio, training = self.training)
             else:
-                h = F.dropout(F.relu(h), self.drop_ratio, training = self.training)
+                h = F.relu(h, inplace=False)
+                h = F.dropout(h, self.drop_ratio, training = self.training)
 
             if self.residual:
-                h += h_list[layer]
+                h = h + h_list[layer]
             # virtual
             if self.virtual:
-                vx = vx = self.vls[layer].update_vn_emb(h, batch, vx)
+                vx = self.vls[layer].update_vn_emb(h, batch, vx)
             h_list.append(h)
 
         #virtual:
@@ -82,7 +83,7 @@ class GNN_2dEnc(torch.nn.Module):
         elif self.JK == "sum":
             node_representation = 0
             for layer in range(self.num_layers + 1):
-                node_representation += h_list[layer]
+                node_representation = node_representation + h_list[0]
 
         return node_representation
 
@@ -127,7 +128,7 @@ class GNN_3dEnc(torch.nn.Module):
         ### computing input node embedding
 
         if xyz.x.size(-1) == 9:
-            h_list = [self.atom_encoder(xyz.x)]
+            h_list = [self.atom_encoder(xyz.x) ]
         elif xyz.x.size(-1) == 3:
             h_list = [self.threed2embedding(xyz.x)]
         for layer in range(self.num_layers):
@@ -139,10 +140,11 @@ class GNN_3dEnc(torch.nn.Module):
                 #remove relu for the last layer
                 h = F.dropout(h, self.drop_ratio, training = self.training)
             else:
-                h = F.dropout(F.relu(h), self.drop_ratio, training = self.training)
+                h = F.relu(h, inplace=False)
+                h = F.dropout(h, self.drop_ratio, training = self.training)
 
             if self.residual:
-                h += h_list[layer]
+                h = h + h_list[layer]
 
             h_list.append(h)
 
@@ -152,8 +154,7 @@ class GNN_3dEnc(torch.nn.Module):
         elif self.JK == "sum":
             node_representation = 0
             for layer in range(self.num_layers + 1):
-                node_representation += h_list[layer]
+                node_representation = node_representation + h_list[layer]
 
         return node_representation
 
-    
