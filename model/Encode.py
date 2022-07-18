@@ -48,10 +48,10 @@ class GNN_2dEnc(torch.nn.Module):
             if virtual:
                 self.vls.append(VirtualNode(emb_dim, emb_dim, dropout = self.drop_ratio))
 
-    def forward(self, x):
-        x, edge_index, edge_attr, batch = x.x, x.edge_index, x.edge_attr, x.batch
+    def forward(self, data):
+        data, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
         ### computing input node embedding
-        h_list = [self.atom_encoder(x)]
+        h_list = [self.atom_encoder(data)]
         for layer in range(self.num_layers):
             # virtual
             if self.virtual:
@@ -119,13 +119,17 @@ class GNN_3dEnc(torch.nn.Module):
                 
             self.batch_norms.append(nn.BatchNorm1d(emb_dim))
         self.threed2embedding=nn.Linear(3,emb_dim)
+        self.atom_encoder = AtomEncoder(emb_dim)
         
-    def forward(self, xyz, xyz_edge_index, xyz_edge_attr, batch):
+    def forward(self, xyz):
         
-
+        xyz_edge_index, xyz_edge_attr = xyz.edge_index, xyz.edge_attr
         ### computing input node embedding
 
-        h_list = [self.threed2embedding(xyz)]
+        if xyz.x.size(-1) == 9:
+            h_list = [self.atom_encoder(xyz.x)]
+        elif xyz.x.size(-1) == 3:
+            h_list = [self.threed2embedding(xyz.x)]
         for layer in range(self.num_layers):
 
             h = self.convs[layer](h_list[layer], xyz_edge_index, xyz_edge_attr)
