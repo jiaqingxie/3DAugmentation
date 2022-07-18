@@ -28,6 +28,7 @@ def train(canonic_model, pred_model, device, loader, optimizer, args, task = "ca
     
     print("---------- start training {} ----------".format(task))
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
+        print(step)
         batch = batch.to(device)
         optimizer.zero_grad()
         if task == "canonical":
@@ -144,7 +145,7 @@ def main():
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     parser.add_argument('--lr1', type=float, default=1e-3, help='Learning rate of canonical3d')
     parser.add_argument('--lr2', type=float, default=1e-2, help='Learning rate of linear regressor.')
-    parser.add_argument('--wd1', type=float, default=0, help='Weight decay of canonical3d.')
+    parser.add_argument('--wd1', type=float, default=1e-4, help='Weight decay of canonical3d.')
     parser.add_argument('--wd2', type=float, default=1e-4, help='Weight decay of linear regressor.')
 
     args = parser.parse_args()
@@ -208,8 +209,8 @@ def main():
     for epoch in range(1, args.epochs + 1):
        
         print("------ Training Canonical ------")
-       
-        train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
+        with torch.autograd.set_detect_anomaly(True):
+            train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
                                 args = args, optimizer = canonical_optimizer, task = "canonical")
 
         print("Epoch:{}, loss: {:.4f}".format(epoch, train_loss))
