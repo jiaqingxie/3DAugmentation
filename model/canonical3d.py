@@ -34,14 +34,13 @@ class Canonical3D(nn.Module):
                                     self.residual, self.gnn_type) # size : [N * emb_dim]
 
         
-    def forward(self, x):
-        x, edge_index, edge_attr, batch =  x.x, x.edge_index, x.edge_attr, x.batch
+    def forward(self, data):
         # 1. concat 2d and 3d, then go through MLP
         if self.choice == "concat":
-            hybrid = torch.cat((self.gnn_2d_enc(x), self.gnn_3d_enc(x)),1)
+            hybrid = torch.cat((self.gnn_2d_enc(data), self.gnn_3d_enc(data)),1)
             hybrid = self.MLPs(hybrid)
         elif self.choice == "add":
-            hybrid = torch.add(self.gnn_2d_enc(x), self.gnn_3d_enc(x))
+            hybrid = torch.add(self.gnn_2d_enc(data), self.gnn_3d_enc(data))
             hybrid = self.MLPs_2(hybrid)
         else:
             raise ValueError("not valid hybrid method")
@@ -50,7 +49,7 @@ class Canonical3D(nn.Module):
         # 2. augmentation: 2d, 2d & 3d
         # take 2d as z1, 2d+3d as z2
         
-        z1 = (self.gnn_2d_enc(x) - self.gnn_2d_enc(x).mean(0)) / self.gnn_2d_enc(x).std(0)
+        z1 = (self.gnn_2d_enc(data) - self.gnn_2d_enc(data).mean(0)) / self.gnn_2d_enc(data).std(0)
         z2 = (hybrid - hybrid.mean(0)) / hybrid.std(0)
         
         return z1, z2
@@ -68,7 +67,7 @@ class Canonical3D(nn.Module):
 
 class LinReg(nn.Module):
     """ Do linear regression after canonical training"""
-    def __init__(self, input_dim, embed_dim, graphpool = "gin", num_tasks = 1):
+    def __init__(self, input_dim, embed_dim, graphpool = "mean", num_tasks = 1):
         super(LinReg, self).__init__()
         self.input_dim = input_dim
         self.embed_dim = embed_dim
@@ -111,6 +110,8 @@ class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, embed_dim, n_MLPs = 3):
         super(MLP, self).__init__()
         self.MLPs = nn.ModuleList()
+        self.n_MLPs =  n_MLPs
+
         for n in range(n_MLPs):
             if n == 0:
                 self.MLPs.append(nn.Linear(input_dim, embed_dim))

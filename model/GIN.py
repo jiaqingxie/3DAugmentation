@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 import torch.nn.functional as F
@@ -12,7 +13,7 @@ class GINConv(MessagePassing):
         super(GINConv, self).__init__(aggr = "add")
 
         self.mlp = nn.Sequential(nn.Linear(emb_dim, emb_dim), nn.BatchNorm1d(emb_dim), nn.ReLU(), nn.Linear(emb_dim, emb_dim))
-        self.eps = nn.Parameter(nn.Tensor([0]))
+        self.eps = nn.Parameter(torch.Tensor([0]))
         
         self.bond_encoder = BondEncoder(emb_dim = emb_dim)
 
