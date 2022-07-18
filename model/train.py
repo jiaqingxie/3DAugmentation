@@ -61,8 +61,8 @@ def train(canonic_model, pred_model, device, loader, optimizer, args, task = "ca
 
         elif task == "predict":
             # predict property by regression
-            embed = canonic_model(batch)
-            pred = pred_model(embed).view(-1,)
+            embed = canonic_model.extract_embed(batch)
+            pred = pred_model(embed, batch).view(-1,)
             loss = reg_criterion(pred, batch.y)
             loss.backward()
             optimizer.step()
@@ -84,8 +84,8 @@ def eval(canonic_model, pred_model, device, loader, evaluator):
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
         with torch.no_grad():  
-            embed = canonic_model(batch)
-            pred = pred_model(embed).view(-1,)
+            embed = canonic_model.extract_embed(batch)
+            pred = pred_model(embed, batch).view(-1,)
 
         y_true.append(batch.y.view(pred.shape).detach().cpu())
         y_pred.append(pred.detach().cpu())
@@ -106,8 +106,8 @@ def test(canonic_model, pred_model, device, loader):
         batch = batch.to(device)
 
         with torch.no_grad():
-            embed = canonic_model(batch)
-            pred = pred_model(embed).view(-1,)
+            embed = canonic_model.extract_embed(batch)
+            pred = pred_model(embed, batch).view(-1,)
 
         y_pred.append(pred.detach().cpu())
 
