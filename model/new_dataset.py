@@ -149,7 +149,7 @@ def normalizeline(line):
 #     return xyzcoordinate,atom_type
 
 
-def readsdf(path='/dataset/pcqm4m-v2-train.sdf'):
+def readsdf(path='../data/dataset/pcqm4m-v2-train.sdf'):
     suppl = Chem.SDMolSupplier(path)
     return suppl
 
@@ -189,6 +189,7 @@ class PygPCQM4Mv2Dataset_SDF(InMemoryDataset):
                 shutil.rmtree(self.folder)
 
         super(PygPCQM4Mv2Dataset_SDF, self).__init__(self.folder, transform, pre_transform)
+        print(self.processed_paths[0])
         self.data, self.slices = torch.load(self.processed_paths[0])
         
 
@@ -308,7 +309,7 @@ class PygPCQM4Mv2Dataset_SDF(InMemoryDataset):
 
 if __name__=="__main__":
 
-    dataset=PygPCQM4Mv2Dataset_SDF(root="dataset",smiles2graph=smiles2graph)
+    dataset=PygPCQM4Mv2Dataset_SDF(root="../data/dataset",smiles2graph=smiles2graph)
     # originaldataset=PCQM4Mv2Dataset(root="/remote-home/yxwang/Graph/dataset",only_smiles=True)
     print(dataset[0])
 
