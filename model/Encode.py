@@ -112,7 +112,7 @@ class GNN_3dEnc(torch.nn.Module):
         self.convs = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
 
-        for layer in range(num_layers):
+        for layer in range(self.num_layers):
             if gnn_type == 'gin':
                 self.convs.append(GINConv(emb_dim))
             else:
@@ -126,13 +126,13 @@ class GNN_3dEnc(torch.nn.Module):
         
         xyz_edge_index, xyz_edge_attr = xyz.edge_index, xyz.edge_attr
         ### computing input node embedding
+        h_list = []
+        if xyz.xyz.size(-1) == 9:
+            h_list = [self.atom_encoder(xyz.xyz) ]
+        elif xyz.xyz.size(-1) == 3:
+            h_list = [self.threed2embedding(xyz.xyz)]
 
-        if xyz.x.size(-1) == 9:
-            h_list = [self.atom_encoder(xyz.x) ]
-        elif xyz.x.size(-1) == 3:
-            h_list = [self.threed2embedding(xyz.x)]
         for layer in range(self.num_layers):
-
             h = self.convs[layer](h_list[layer], xyz_edge_index, xyz_edge_attr)
             h = self.batch_norms[layer](h)
 
