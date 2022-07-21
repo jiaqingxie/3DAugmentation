@@ -158,3 +158,20 @@ class GNN_3dEnc(torch.nn.Module):
 
         return node_representation
 
+class GNN_SharedEnc(torch.nn.Module):
+    """
+    Output:
+        node representations
+    """
+    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin'):
+        '''
+            emb_dim (int): node embedding dimensionality
+            num_layers (int): number of GNN message passing layers
+        '''
+
+        super(GNN_SharedEnc, self).__init__()
+        self.num_layers = num_layers
+        self.drop_ratio = drop_ratio
+        self.JK = JK
+        ### add residual connection or not
+        self.residual = residual
