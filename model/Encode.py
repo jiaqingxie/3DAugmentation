@@ -127,8 +127,8 @@ class GNN_3dEnc(torch.nn.Module):
         xyz_edge_index, xyz_edge_attr = xyz.edge_index, xyz.edge_attr
         ### computing input node embedding
         h_list = []
-        if xyz.xyz.size(-1) == 9:
-            h_list = [self.atom_encoder(xyz.xyz) ]
+        if xyz.xyz.size(-1) == 9:  ## training use 2d encoder
+            h_list = [self.atom_encoder(xyz.x) ]
         elif xyz.xyz.size(-1) == 3:
             h_list = [self.threed2embedding(xyz.xyz)]
 
@@ -163,15 +163,93 @@ class GNN_SharedEnc(torch.nn.Module):
     Output:
         node representations
     """
-    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin'):
+    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin', virtual = False):
         '''
             emb_dim (int): node embedding dimensionality
             num_layers (int): number of GNN message passing layers
         '''
 
         super(GNN_SharedEnc, self).__init__()
+        self.emb_dim = emb_dim
         self.num_layers = num_layers
         self.drop_ratio = drop_ratio
         self.JK = JK
         ### add residual connection or not
         self.residual = residual
+        self.virtual = virtual
+
+        self.threed2embedding=nn.Linear(3,emb_dim)
+        self.atom_encoder = AtomEncoder(emb_dim)
+        self.embed_d = 0
+
+
+        ###List of GNNs
+        self.convs = nn.ModuleList()
+        self.batch_norms = nn.ModuleList()
+        self.vls = nn.ModuleList() # virtual layers
+
+        for _ in range(num_layers):
+            if gnn_type == 'gin':
+                self.convs.append(GINConv(emb_dim))
+            else:
+                raise ValueError('Undefined GNN type called {}'.format(gnn_type))
+            
+            self.batch_norms.append(nn.BatchNorm1d(emb_dim))
+
+            if self.virtual:
+                self.vls.append(VirtualNode(emb_dim, emb_dim, dropout = self.drop_ratio))
+
+    def forward(self, data, three_d):
+        edge_index, edge_attr, batch =  data.edge_index, data.edge_attr, data.batch
+        ### computing input node embedding
+        h_list = []
+        if not three_d:
+            h_list = [self.atom_encoder(data.x)]
+        elif data.xyz.size(-1) == 3:
+            h_list = [self.threed2embedding(data.xyz) + self.atom_encoder(data.x)]
+        # shared encoding
+        for layer in range(self.num_layers):
+            # virtual
+            if self.virtual:
+                h, vx = self.vls[layer].update_node_emb(h, edge_index, batch)
+            h = self.convs[layer](h_list[layer], edge_index, edge_attr)
+            h = self.batch_norms[layer](h)
+            
+            if layer == self.num_layers - 1:
+                #remove relu for the last layer
+                h = F.dropout(h, self.drop_ratio, training = self.training)
+            else:
+                h = F.relu(h, inplace=False)
+                h = F.dropout(h, self.drop_ratio, training = self.training)
+
+            if self.residual:
+                h = h + h_list[layer]
+            # virtual
+            if self.virtual:
+                vx = self.vls[layer].update_vn_emb(h, batch, vx)
+            h_list.append(h)
+
+        #virtual:
+        if self.virtual:
+            h, vx = self.vls[-1].update_node_emb(h, edge_index, batch)
+
+        ### Different implementations of Jk-concat
+        if self.JK == "last":
+            node_representation = h_list[-1]
+        elif self.JK == "sum":
+            node_representation = 0
+            for layer in range(self.num_layers + 1):
+                node_representation = node_representation + h_list[0]
+        
+        if not three_d:
+            self.embed_2d = node_representation
+        else: # if not 2d, then 3d
+            self.embed_2d_3d = node_representation
+
+        return node_representation
+
+    def extract_embed(self, three_d):
+        if not three_d:
+            return self.embed_2d
+        else:
+            return self.embed_2d_3d
