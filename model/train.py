@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR
 from canonical3d import Canonical3D, LinReg
+from canonical_shared import Canonical_Shared
 
 import os
 from tqdm import tqdm
@@ -63,7 +64,7 @@ def train(canonic_model, pred_model, device, loader, optimizer, args, task = "ca
 
         elif task == "predict":
             # predict property by regression
-            embed = canonic_model.extract_embed(batch)
+            embed = canonic_model.extract_embed(batch, three_d = True)
             pred = pred_model(embed, batch).view(-1,)
             loss = reg_criterion(pred, batch.y)
             loss.backward()
