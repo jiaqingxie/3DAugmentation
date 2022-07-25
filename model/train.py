@@ -209,8 +209,8 @@ def main():
         scheduler = StepLR(pred_optimizer, step_size=30, gamma=0.25)
 
     # 1. First train self-supervised Canonical
-    for epoch in range(1, args.epochs + 1):
-       
+    #for epoch in range(1, args.epochs + 1):
+    for epoch in range(1, 2):  
         print("------ Training Canonical ------")
         with torch.autograd.set_detect_anomaly(True):
             train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
