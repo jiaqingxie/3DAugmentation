@@ -191,7 +191,7 @@ def main():
     }
 
     
-    canonical_model = Canonical3D(residual = True, gnn_type = 'gin', virtual = False, **shared_params).to(device)
+    canonical_model = Canonical_Shared(residual = True, gnn_type = 'gin', virtual = False, **shared_params).to(device)
     pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)
 
     canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
