@@ -50,7 +50,7 @@ class Canonical_Shared(nn.Module):
         # 2. augmentation: 2d, 2d & 3d
         # take 2d as z1, 2d+3d as z2
         
-        z1 = (self.gnn_2d_enc(data) - self.gnn_2d_enc(data).mean(0)) / self.gnn_2d_enc(data).std(0)
+        z1 = (self.gnn_2d_enc(data, three_d = False) - self.gnn_2d_enc(data, three_d = False).mean(0)) / self.gnn_2d_enc(data, three_d = False).std(0)
         z2 = (hybrid - hybrid.mean(0)) / hybrid.std(0)
         
         return z1, z2
