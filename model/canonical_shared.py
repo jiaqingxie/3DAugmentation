@@ -15,7 +15,7 @@ class Canonical_Shared(nn.Module):
 
     """
     def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin',
-                    virtual = False, n_MLPs = 3, choice = "concat"):
+                    virtual = False, n_MLPs = 3, choice = "add"):
         super(Canonical_Shared, self).__init__()
         self.num_layers = num_layers
         self.emb_dim = emb_dim
