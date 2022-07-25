@@ -87,7 +87,7 @@ def eval(canonic_model, pred_model, device, loader, evaluator):
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
         with torch.no_grad():  
-            embed = canonic_model.extract_embed(batch)
+            embed = canonic_model.extract_embed(batch, three_d = False)
             pred = pred_model(embed, batch).view(-1,)
 
         y_true.append(batch.y.view(pred.shape).detach().cpu())
@@ -109,7 +109,7 @@ def test(canonic_model, pred_model, device, loader):
         batch = batch.to(device)
 
         with torch.no_grad():
-            embed = canonic_model.extract_embed(batch)
+            embed = canonic_model.extract_embed(batch, three_d = False)
             pred = pred_model(embed, batch).view(-1,)
 
         y_pred.append(pred.detach().cpu())
