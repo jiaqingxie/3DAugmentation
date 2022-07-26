@@ -23,9 +23,9 @@ class Canonical_Shared(nn.Module):
         self.gnn_type = gnn_type
         
         self.gnn_2d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, 
-                                    self.residual, self.gnn_type, self.virtual) # size : [N * emb_dim]
+                                    self.gnn_type) # size : [N * emb_dim]
         self.gnn_2d_3d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, 
-                                    self.residual, self.gnn_type) # size : [N * emb_dim]
+                                    self.gnn_type) # size : [N * emb_dim]
 
         
     def forward(self, data):
