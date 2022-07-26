@@ -4,8 +4,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR
-from canonical3d import Canonical3D, LinReg
-from canonical_shared import Canonical_Shared
+from canonical_shared import Canonical_Shared, LinReg
 
 import os
 from tqdm import tqdm
