@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR
 from canonical_shared import Canonical_Shared, LinReg
-
+import itertools
 import os
 from tqdm import tqdm
 import argparse
@@ -196,11 +196,22 @@ def main():
 
     
     canonical_model = Canonical_Shared(gnn_type = 'gin', **shared_params).to(device)
+    checkpoint = torch.load("../results/checkpoint/checkpoint_canonic_8000.pt")
+    canonical_model.load_state_dict(checkpoint['model_state_dict'])
+    
+
+
     pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)
 
-    canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
-    pred_optimizer = optim.Adam(pred_model.parameters(), lr=args.lr2, weight_decay=args.wd2)
+    #canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
+    #pred_optimizer = optim.Adam(pred_model.parameters(), lr=args.lr2, weight_decay=args.wd2)
+    #[for p in pred_model.parameters()]
+        
+    params = [p for p in pred_model.parameters()]
+    params2 = [p for p in canonical_model.parameters()]
+    params.extend(params2)
 
+    pred_optimizer = optim.Adam(params, lr=args.lr2, weight_decay=args.wd2)
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
@@ -214,6 +225,7 @@ def main():
 
     # 1. First train self-supervised Canonical
     #for epoch in range(1, args.epochs + 1):
+    """
     for epoch in range(1, 2):  
         print("------ Training Canonical ------")
         #with torch.autograd.set_detect_anomaly(True):
@@ -221,6 +233,10 @@ def main():
                                 args = args, optimizer = canonical_optimizer, task = "canonical")
 
         print("Epoch:{}, loss: {:.4f}".format(epoch, train_loss))
+
+    """
+
+    
 
 
     # 2. Second train Regressor
