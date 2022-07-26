@@ -243,7 +243,7 @@ def main():
             if args.checkpoint_dir != '':
                 print('Saving checkpoint...')
                 checkpoint = {'epoch': epoch, 'model_state_dict': pred_model.state_dict(), 'optimizer_state_dict': pred_optimizer.state_dict(), 'scheduler_state_dict': scheduler.state_dict(), 'best_val_mae': best_valid_mae}
-                torch.save(checkpoint, os.path.join(args.checkpoint_dir, 'checkpoint.pt'))
+                torch.save(checkpoint, os.path.join(args.checkpoint_dir, 'checkpoint_downstream_{}.pt'.format(epoch)))
 
             if args.save_test_dir != '':
                 testdev_pred = test(canonical_model, pred_model, device, testdev_loader)
