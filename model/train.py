@@ -59,12 +59,17 @@ def train(canonic_model, pred_model, device, loader, optimizer, args, task = "ca
             loss.backward()
             optimizer.step()
             loss_accum += loss.detach().cpu().item()
-            
+
+            if args.checkpoint_dir != '' and step % 2000 == 0:
+                # save to checkpoint
+                checkpoint = {'batch': step, 'model_state_dict': canonic_model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}
+                torch.save(checkpoint, os.path.join(args.checkpoint_dir, 'checkpoint_canonic_{}.pt'.format(step)))
+
             print('Batch={:03d}, loss={:.4f}'.format(step, loss.item()))
 
         elif task == "predict":
             # predict property by regression
-            embed = canonic_model.extract_embed(batch, three_d = True)
+            embed = canonic_model.extract_embed(batch, three_d = False)
             pred = pred_model(embed, batch).view(-1,)
             loss = reg_criterion(pred, batch.y)
             loss.backward()
@@ -148,7 +153,7 @@ def main():
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     parser.add_argument('--lr1', type=float, default=1e-3, help='Learning rate of canonical3d')
     parser.add_argument('--lr2', type=float, default=1e-2, help='Learning rate of linear regressor.')
-    parser.add_argument('--wd1', type=float, default=1e-4, help='Weight decay of canonical3d.')
+    parser.add_argument('--wd1', type=float, default=0, help='Weight decay of canonical3d.')
     parser.add_argument('--wd2', type=float, default=1e-4, help='Weight decay of linear regressor.')
 
     args = parser.parse_args()
@@ -191,7 +196,7 @@ def main():
     }
 
     
-    canonical_model = Canonical_Shared(residual = True, gnn_type = 'gin', virtual = False, **shared_params).to(device)
+    canonical_model = Canonical_Shared(gnn_type = 'gin', **shared_params).to(device)
     pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)
 
     canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
@@ -212,8 +217,8 @@ def main():
     #for epoch in range(1, args.epochs + 1):
     for epoch in range(1, 2):  
         print("------ Training Canonical ------")
-        with torch.autograd.set_detect_anomaly(True):
-            train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
+        #with torch.autograd.set_detect_anomaly(True):
+        train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
                                 args = args, optimizer = canonical_optimizer, task = "canonical")
 
         print("Epoch:{}, loss: {:.4f}".format(epoch, train_loss))
