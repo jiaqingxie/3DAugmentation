@@ -14,20 +14,13 @@ class Canonical_Shared(nn.Module):
     Using Shared Encoder
 
     """
-    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin',
-                    virtual = False, n_MLPs = 3, choice = "add"):
+    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", gnn_type = 'gin'):
         super(Canonical_Shared, self).__init__()
         self.num_layers = num_layers
         self.emb_dim = emb_dim
         self.drop_ratio = drop_ratio
         self.JK = JK
-        self.residual = residual
         self.gnn_type = gnn_type
-        self.virtual = virtual
-        self.n_MLPs = n_MLPs
-        self.choice = choice
-        self.MLPs = MLP(2*self.emb_dim, self.emb_dim, self.emb_dim, self.n_MLPs)
-        self.MLPs_2 = MLP(self.emb_dim, self.emb_dim, self.emb_dim, self.n_MLPs)
         
         self.gnn_2d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, 
                                     self.residual, self.gnn_type, self.virtual) # size : [N * emb_dim]
@@ -36,22 +29,12 @@ class Canonical_Shared(nn.Module):
 
         
     def forward(self, data):
-        # 1. concat 2d and 3d, then go through MLP
-        if self.choice == "concat":
-            hybrid = torch.cat((self.gnn_2d_enc(data, three_d = False), self.gnn_2d_3d_enc(data, three_d = True)),1)
-            hybrid = self.MLPs(hybrid)
-        elif self.choice == "add":
-            hybrid = torch.add(self.gnn_2d_enc(data, three_d = False), self.gnn_2d_3d_enc(data, three_d = True))
-            hybrid = self.MLPs_2(hybrid)
-        else:
-            raise ValueError("not valid hybrid method")
-            
-        # Note that its a graph level task, we do not need to augment node features.    
-        # 2. augmentation: 2d, 2d & 3d
+          
+        # augmentation: 2d, 2d & 3d
         # take 2d as z1, 2d+3d as z2
         
         z1 = (self.gnn_2d_enc(data, three_d = False) - self.gnn_2d_enc(data, three_d = False).mean(0)) / self.gnn_2d_enc(data, three_d = False).std(0)
-        z2 = (hybrid - hybrid.mean(0)) / hybrid.std(0)
+        z2 = (self.gnn_2d_3d_enc(data, three_d = True) - self.gnn_2d_3d_enc(data, three_d = True).mean(0)) / self.gnn_2d_3d_enc(data, three_d = True).std(0)
         
         return z1, z2
     
@@ -59,14 +42,8 @@ class Canonical_Shared(nn.Module):
         if not three_d:
             return self.gnn_2d_enc(x, three_d = False) # valid & test embed without 3d
         # train embed using 3d
-        elif self.choice == "concat":
-            hybrid = torch.cat((self.gnn_2d_enc(x, three_d = False), self.gnn_2d_3d_enc(x, three_d = True)),1)
-            hybrid = self.MLPs(hybrid)
-        elif self.choice == "add":
-            hybrid = torch.add(self.gnn_2d_enc(x, three_d = False), self.gnn_2d_3d_enc(x, three_d = True))
-            hybrid = self.MLPs_2(hybrid)
-        
-        return hybrid
+        else:
+            return self.gnn_2d_3d_enc(x, three_d = True) # else return 3d
 
 class LinReg(nn.Module):
     """ Do linear regression after canonical training"""
@@ -92,9 +69,9 @@ class LinReg(nn.Module):
             raise ValueError("Invalid graph pooling type.")
 
         if self.graphpool == "set2set":
-            self.graph_pred_linear = nn.Linear(2*self.embed_dim, self.num_tasks)
+            self.graph_pred_linear = MLP(2 * self.embed_dim, self.num_tasks, self.embed_dim)
         else:
-            self.graph_pred_linear = nn.Linear(self.embed_dim, self.num_tasks)
+            self.graph_pred_linear = MLP(self.embed_dim, self.num_tasks, self.embed_dim)
             
     def forward(self, embed, data):
         
@@ -106,10 +83,8 @@ class LinReg(nn.Module):
             # At inference time, we clamp the value between 0 and 20
             return torch.clamp(output, min=0, max=20)
         
-    
-    
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, embed_dim, n_MLPs = 3):
+    def __init__(self, input_dim, output_dim, embed_dim, n_MLPs = 2):
         super(MLP, self).__init__()
         self.MLPs = nn.ModuleList()
         self.n_MLPs =  n_MLPs
