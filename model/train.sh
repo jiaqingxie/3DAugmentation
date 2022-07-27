@@ -1,0 +1,1 @@
+python train.py --epochs 100 --checkpoint_dir "../results/checkpoint/" --save_test_dir "../results/test/" --log_dir "../results/log/" --use_pretrain False --drop_ratio 0.15 --virtual True --residual True
