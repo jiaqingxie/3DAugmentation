@@ -12,6 +12,7 @@ import argparse
 import time
 import numpy as np
 import random
+import wandb
 
 ### importing OGB-LSC
 from ogb.lsc import PygPCQM4Mv2Dataset, PCQM4Mv2Evaluator
@@ -24,6 +25,7 @@ def train(canonic_model, pred_model, device, loader, optimizer, args, task = "ca
     if task == "canonical":
         canonic_model.train()
     elif task == "predict":
+        canonic_model.train()
         pred_model.train()
     
     loss_accum = 0
@@ -142,6 +144,7 @@ def main():
     parser.add_argument('--lambd', type=float, default=1e-3, help='trade-off ratio.')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='input batch size for training (default: 256)')
+    parser.add_argument('--batch_size', type=int)
     parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--num_workers', type=int, default=0,
@@ -150,13 +153,27 @@ def main():
                         help='tensorboard log directory')
     parser.add_argument('--checkpoint_dir', type=str, default = '', help='directory to save checkpoint')
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
+    parser.add_argument('--checkpoint_pretrain', type = int, default = 8000, help='idx of pretrained canonical file ')
+    parser.add_argument('--checkpoint_pred', type = int, default = 3, help='epoch of pretrained canonical file ')
+    parser.add_argument('--use_pretrain', type = bool, default = True, help='use pretrain or not')
     parser.add_argument('--lr1', type=float, default=1e-3, help='Learning rate of canonical3d')
-    parser.add_argument('--lr2', type=float, default=1e-2, help='Learning rate of linear regressor.')
+    parser.add_argument('--lr2', type=float, default=1e-3, help='Learning rate of linear regressor.')
     parser.add_argument('--wd1', type=float, default=0, help='Weight decay of canonical3d.')
-    parser.add_argument('--wd2', type=float, default=1e-4, help='Weight decay of linear regressor.')
+    parser.add_argument('--wd2', type=float, default=1e-5, help='Weight decay of linear regressor.')
 
     args = parser.parse_args()
-
+    
+    # configure wandb:
+    wandb.init(project="3DCanonical-Finetune", entity="jiaqing",name=str(args),config={
+      "checkpoint_pretrain": args.checkpoint_pretrain,
+      "lr1": args.lr1,
+      "lr2": args.lr2,
+      "lambd": args.lambd,
+      "drop_ratio": args.drop_ratio,
+      "epochs": args.epochs,
+      "batch_size": args.batch_size,
+    })
+   
     np.random.seed(42)
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
@@ -196,22 +213,21 @@ def main():
 
     
     canonical_model = Canonical_Shared(gnn_type = 'gin', **shared_params).to(device)
-    checkpoint = torch.load("../results/checkpoint/checkpoint_canonic_8000.pt")
-    canonical_model.load_state_dict(checkpoint['model_state_dict'])
     
-
-
-    pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)
-
-    #canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
-    #pred_optimizer = optim.Adam(pred_model.parameters(), lr=args.lr2, weight_decay=args.wd2)
-    #[for p in pred_model.parameters()]
-        
     params = [p for p in pred_model.parameters()]
-    params2 = [p for p in canonical_model.parameters()]
-    params.extend(params2)
+    canonical_optimizer = None
+    if args.use_pretrain:
+        checkpoint = torch.load("../results/checkpoint/checkpoint_canonic_8000.pt")
+        canonical_model.load_state_dict(checkpoint['model_state_dict'])
+        params2 = [p for p in canonical_model.parameters()]
+        params.extend(params2)
+    else:
+        canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
 
+    pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)  
     pred_optimizer = optim.Adam(params, lr=args.lr2, weight_decay=args.wd2)
+    num_params = len(params) # total number of parameters (Canonical + downstream regressor)
+
     if args.log_dir != '':
         writer = SummaryWriter(log_dir=args.log_dir)
 
@@ -225,20 +241,15 @@ def main():
 
     # 1. First train self-supervised Canonical
     #for epoch in range(1, args.epochs + 1):
-    """
-    for epoch in range(1, 2):  
-        print("------ Training Canonical ------")
-        #with torch.autograd.set_detect_anomaly(True):
-        train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
-                                args = args, optimizer = canonical_optimizer, task = "canonical")
+    if not args.use_pretrain:
+        for epoch in range(1, 3):  
+            print("------ Training Canonical ------")
+            #with torch.autograd.set_detect_anomaly(True):
+            train_loss = train(canonic_model = canonical_model, pred_model = pred_model, device = device, loader = train_loader, 
+                                    args = args, optimizer = canonical_optimizer, task = "canonical")
 
-        print("Epoch:{}, loss: {:.4f}".format(epoch, train_loss))
-
-    """
-
+            print("Epoch:{}, loss: {:.4f}".format(epoch, train_loss))
     
-
-
     # 2. Second train Regressor
     for epoch in range(1, args.epochs + 1):
         train_mae = train(canonic_model = canonical_model, pred_model = pred_model, device = device, 
@@ -248,6 +259,7 @@ def main():
         valid_mae = eval(canonical_model, pred_model, device, valid_loader, evaluator)
 
         print({'Train': train_mae, 'Validation': valid_mae})
+        wandb.log({'Train': train_mae, 'Validation': valid_mae})
 
         if args.log_dir != '':
             writer.add_scalar('valid/mae', valid_mae, epoch)
