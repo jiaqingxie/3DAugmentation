@@ -208,6 +208,7 @@ class GNN_SharedEnc(torch.nn.Module):
         elif data.xyz.size(-1) == 3:
             h_list = [self.threed2embedding(data.xyz) + self.atom_encoder(data.x)]
         # shared encoding
+        h, vx = 0, 0
         for layer in range(self.num_layers):
             # virtual
             if self.virtual:
