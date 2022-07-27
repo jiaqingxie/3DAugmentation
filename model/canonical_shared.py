@@ -22,6 +22,7 @@ class Canonical_Shared(nn.Module):
         self.JK = JK
         self.gnn_type = gnn_type
         self.virtual = virtual
+        self.residual = residual
         
         self.gnn_2d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, self.residual,
                                     self.gnn_type, self.virtual) # size : [N * emb_dim]
