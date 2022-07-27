@@ -1,4 +1,7 @@
-## Code repo for the NeurIPS 2022 OGB challenge of the dataset PCQM4Mv2 ##
+## Code Repo for the paper: 3D Information Augmentation with Canonical Correlation Analysis##
+
+
+### NeurIPS 2022 LSC for PCQM4Mv2 ###
 
 ### 1. Dataset Preparation ###
 Make sure that you have downloaded the dataset PCQM4Mv2 in advance before you begin to process the data (Quick).
