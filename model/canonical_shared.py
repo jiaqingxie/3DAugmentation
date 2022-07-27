@@ -14,18 +14,19 @@ class Canonical_Shared(nn.Module):
     Using Shared Encoder
 
     """
-    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", gnn_type = 'gin'):
+    def __init__(self, num_layers, emb_dim, drop_ratio = 0.5, JK = "last", residual = False, gnn_type = 'gin', virtual = False):
         super(Canonical_Shared, self).__init__()
         self.num_layers = num_layers
         self.emb_dim = emb_dim
         self.drop_ratio = drop_ratio
         self.JK = JK
         self.gnn_type = gnn_type
+        self.virtual = virtual
         
-        self.gnn_2d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, 
-                                    self.gnn_type) # size : [N * emb_dim]
-        self.gnn_2d_3d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, 
-                                    self.gnn_type) # size : [N * emb_dim]
+        self.gnn_2d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, self.residual,
+                                    self.gnn_type, self.virtual) # size : [N * emb_dim]
+        self.gnn_2d_3d_enc = GNN_SharedEnc(self.num_layers, self.emb_dim, self.drop_ratio, self.JK, self.residual,
+                                    self.gnn_type, self.virtual) # size : [N * emb_dim]
 
         
     def forward(self, data):
