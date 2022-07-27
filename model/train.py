@@ -166,6 +166,7 @@ def main():
     # configure wandb:
     wandb.init(project="3DCanonical-Finetune", entity="jiaqing",name=str(args),config={
       "checkpoint_pretrain": args.checkpoint_pretrain,
+      "checkpoint_pred": args.checkpoint_pred,
       "lr1": args.lr1,
       "lr2": args.lr2,
       "lambd": args.lambd,
@@ -217,7 +218,7 @@ def main():
     params = [p for p in pred_model.parameters()]
     canonical_optimizer = None
     if args.use_pretrain:
-        checkpoint = torch.load("../results/checkpoint/checkpoint_canonic_8000.pt")
+        checkpoint = torch.load("../results/checkpoint/checkpoint_canonic_{}.pt".format(args.checkpoint_pretrain))
         canonical_model.load_state_dict(checkpoint['model_state_dict'])
         params2 = [p for p in canonical_model.parameters()]
         params.extend(params2)
