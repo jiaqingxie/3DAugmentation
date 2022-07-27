@@ -140,8 +140,8 @@ def main():
                         help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=600,
                         help='dimensionality of hidden units in GNNs (default: 600)')
-    parser.add_argument('--virtual', type=bool, default=False, help='using virtual mode')
-    parser.add_argument('--residual', type=bool, default=False, help='using residual mode')                       
+    parser.add_argument('--virtual',  help='using virtual mode', action='store_true')
+    parser.add_argument('--residual',  help='using residual mode', action='store_true')                       
     parser.add_argument('--train_subset', action='store_true')
     parser.add_argument('--lambd', type=float, default=1e-3, help='trade-off ratio.')
     parser.add_argument('--batch_size', type=int, default=256,
@@ -156,7 +156,7 @@ def main():
     parser.add_argument('--save_test_dir', type=str, default = '', help='directory to save test submission file')
     parser.add_argument('--checkpoint_pretrain', type = int, default = 8000, help='idx of pretrained canonical file ')
     parser.add_argument('--checkpoint_pred', type = int, default = 3, help='epoch of pretrained canonical file ')
-    parser.add_argument('--use_pretrain', type = bool, default = True, help='use pretrain or not')
+    parser.add_argument('--use_pretrain',  help='use pretrain or not', action='store_true')
     parser.add_argument('--lr1', type=float, default=1e-3, help='Learning rate of canonical3d')
     parser.add_argument('--lr2', type=float, default=1e-3, help='Learning rate of linear regressor.')
     parser.add_argument('--wd1', type=float, default=0, help='Weight decay of canonical3d.')
@@ -174,7 +174,12 @@ def main():
       "drop_ratio": args.drop_ratio,
       "epochs": args.epochs,
       "batch_size": args.batch_size,
+      "virtual": args.virtual,
+      "residual": args.residual,
+      "use_pretrain": args.use_pretrain
     })
+    
+    print(args.use_pretrain)
    
     np.random.seed(42)
     torch.manual_seed(42)
