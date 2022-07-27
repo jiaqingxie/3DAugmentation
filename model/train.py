@@ -140,6 +140,8 @@ def main():
                         help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=600,
                         help='dimensionality of hidden units in GNNs (default: 600)')
+    parser.add_argument('--virtual', type=bool, default=False, help='using virtual mode')
+    parser.add_argument('--residual', type=bool, default=False, help='using residual mode')                       
     parser.add_argument('--train_subset', action='store_true')
     parser.add_argument('--lambd', type=float, default=1e-3, help='trade-off ratio.')
     parser.add_argument('--batch_size', type=int, default=256,
@@ -210,11 +212,13 @@ def main():
         'num_layers': args.num_layers,
         'emb_dim': args.emb_dim,
         'drop_ratio': args.drop_ratio,
+        'virtual': args.virtual,
+        'residual': args.residual
     }
 
     
     canonical_model = Canonical_Shared(gnn_type = 'gin', **shared_params).to(device)
-    
+    pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)  
     params = [p for p in pred_model.parameters()]
     canonical_optimizer = None
     if args.use_pretrain:
@@ -225,7 +229,7 @@ def main():
     else:
         canonical_optimizer = optim.Adam(canonical_model.parameters(), lr=args.lr1, weight_decay=args.wd1)
 
-    pred_model = LinReg(args.emb_dim, args.emb_dim).to(device)  
+    
     pred_optimizer = optim.Adam(params, lr=args.lr2, weight_decay=args.wd2)
     num_params = len(params) # total number of parameters (Canonical + downstream regressor)
 
