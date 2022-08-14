@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from .egt_layers import EGT_Layer, Graph
+from egt_layers import EGT_Layer, Graph
 
 
 class EGT_Base(nn.Module):
