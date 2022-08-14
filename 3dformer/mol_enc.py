@@ -1,6 +1,7 @@
 import torch
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims 
 from ..model.new_dataset import PygPCQM4Mv2Dataset_SDF, xyzData
+import torch.nn
 
 full_atom_feature_dims = get_atom_feature_dims()
 full_bond_feature_dims = get_bond_feature_dims()
@@ -56,3 +57,4 @@ if __name__ == '__main__':
     #print(atom_enc(dataset[0].x).shape)
     print(bond_enc(dataset[0].edge_attr).shape)
     
+    a = nn.Tanh()
